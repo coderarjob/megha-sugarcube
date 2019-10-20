@@ -1,0 +1,121 @@
+
+
+A driver in MOS is a special kind of the process_model (multisegment).
+This document discusses the model followed by the driver programs and the
+kernel to support the following:
+	1. Device driver of one type can handle multiple device of that type.
+	   - Every device driver at the time of initialization will figure out the
+		 number of devices that are connected to it.
+	   - It will then register each of the devides to the operating system with
+		 the device id (consisting of a device type number and a device minor
+		 index) and a common file_operations structure.
+	   - Along with the 'type' and the 'minor' numbers, there is also an alias
+		 with which each of the device can be recognized.
+	   - When user will pass this 'alias' to the operating system to open
+		 system call, its corresponding device driver will be consulted.
+	
+		 #define KEYBOARD 1
+		 char devicename[10];
+		 
+		 int connected_devices = getdeviceCount()
+
+		 for(int i = 0; i < connected_devices; i++)
+		 {
+			 sprintf(devicename,"%s%u","KBD",i);
+			 dev_register(KEYBOARD, i,devicename,&fileop,DEV_NO_SHARED_RW);
+
+			 // --------------------------------------------
+			 // dev_register(int dev_type, int minor, char *alias, 
+			 				struct file_operations *fop, flags);
+			 // --------------------------------------------
+			 // DEV_NO_SHARED_RW: Only one instance of this device file can  be
+			 // 				  opened for read or write. This prevents the 
+			 //                   race condition mentioned in the point no. 4, 
+			 //					  below.
+			 // --------------------------------------------
+		 }
+
+	2. Structure of file_operations
+		
+		This is a structure that is implemented by device drivers and file
+		system modules. The whole idea that even a device driver can work like
+		a file system, and that is the whole idea.
+
+		File system has a unified way to read and write to any file that
+		reside in its file sytem domain (a FAT32 can read/write any file on a
+		FAT32 device). Similarly,
+
+		A device driver presents a unified way to perform read/write operations
+		on any device of a perticular type (a keyboard driver can read and
+		write to any keyboard is attached to a computer; identified by their 
+		minor numbers).
+
+	   struct file_operations{
+			int (*open)(int minor,int options[]);
+			int (*close)(int minor);
+			int (*ctrl)(int minor,int options[]);
+			int (*read)(int minor,void *buffer,int sizeof_type,int length);
+			int (*write)(int minor,void *buffer,int *sizeof_type,int length);
+	   }
+
+	3. When users need to open a device to configure it or read/write to it,
+	they can use the 'alias' for these. 
+
+	int fd = open("kbd0",FS_OPEN,FS_SHARED);
+
+	Note that the above 'open' is a system call not one from the above
+	sturcture. It will be the Operating system who will query a table and get
+	the corresponding file_operations sturcture that is registered with this
+	alias.
+
+	4. Devices for say the keyboard will issue an 'MESSAGE' to the operating
+	system with the major and minor device numbers. The Operating system will
+	pass on the message number and the device numbers to each of the routines
+	that have registerd for the perticular message
+
+	It will be the job of the application to receive the message and open the
+	perticular device with that minor and mojor numbers and send/revive data.
+	
+	However, note that, say there are two routines that is waiting for messages
+	from the keyboard. So when a keyboard message does arrive, OS will call the
+	routine A and then after it returned, OS will call routine B. If routine A
+	have already read from the keyboard queue, the keypress is no longer
+	available for routine B. What to do?
+
+	If routine A should first 'peek' into the queue, and if the 'keystroke' is
+	one that is desired, will return from the method with 1 value (BX = 1),
+	otherwise should return 0 (BX = 0). Also note that the return sould be a
+	far return (RETF), as the kernel code is in another segment.
+
+	The Operating system will take note of the returned value, and will not
+	call the second routine if the keystroke was already surviced by the first.
+
+	Question: 
+	---------
+	What happens in the case of the terminal driver? The terminal
+	will almost always need to service every keystroke from the keyboard?
+
+	Question: 
+	---------
+	Say the terminal driver has registerd to receive messages from
+	the keyboard, and another application program has opened the keyboard file
+	using 'open' system call and waiting on 'read'. When a keypress do occour,
+	what happens? Which application gets the get keyboard data - Will the 
+	terminal driver receive the message first and read from the keyboard, then 
+	the application program will not get the keystroke afterwards. Or will the 
+	application program receive will be able to read from the keyboard first. 
+	This is a race condition. 
+	
+	-  This setuation do not occour, because the keyboard driver will have 
+	   DEV_NO_SHARED_RW option when it is registersing itself with the 
+	   Operating System
+
+	For example:
+	---------
+		
+		int devfd;
+		
+		int _init()
+		{
+			q_register(KDB_IN,read_keyboard);
+		}

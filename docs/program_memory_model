@@ -1,0 +1,120 @@
+
+System calls will reside in the segment of the kernel or the device
+drivers. The caller function however can be on a different segment, and use
+to INT instruction to call any system call. 
+
+Calling Convention:
+------------------
+
+A) Memory convention:
+Application programs (AP) in Megha have 'small' memory model: DS = SS
+This memory model enables developers to use any C compiler to write programs,
+as this model is more popular and simulates a sort of 'flat' model.
+
+However, as the Stack, Code and Data resides in the same segment, large
+programs may not fit in this mode. (Such programs can switch to a more liberal,
+LARGE model, where DS <> SS)
+
+Note:
+It will always be CS = DS = SS, in SMALL model; and CS = DS for LARGE model,
+when any AP starts execution. When inside a system call, this 
+condition breaks, as a system call resides in the segment the kernel is in.
+However DS and SS are not changed and still point to where it did before the 
+system call.
+
+Note:
+This is not to say that AP cannot access data in another segment, it just have
+to use any of the ES, FS registers, for that. Overriding the DS register is not
+allowed (reckless overriding is not allowed! If one does the assignment in a
+controlled way it is not going to be a problem)
+
+Note:
+A system call routive, for example 'write' will get 'offset' of the buffer as
+its input, DS will be assumed. If however the routine wants to wite to another
+segment, it can use any of the other segment registers (which are also
+preserved), or it can change DS register but restore it back before returning.
+
+B) Sample 'execute' function:
+
+`
+	execute(segment, program_offset, stack_offset, mode)
+	{
+		if (mode == LARGE)
+			goto large;
+		else if (mode == SMALL)
+			goto small;
+		else
+			panic("Invalid execution mode");
+
+		large:
+			push DS;
+			DS = segment;
+			call segment:program_offset; // ENSURES CS = DS
+			pop DS;						 // RESTORE DS
+			goto _exit;
+
+		small:
+			_ss = SS
+			_sp = SP
+			
+			CLI
+				SS  = segment
+				SP = stack_offset
+				DS = segment				// ENSURES SS = DS
+			STI
+
+			push _ss
+			push _sp
+			call segment:program_offset // ENSURES SS = DS = CS
+
+			CLI
+				pop SP						// RESTORE DS, SS  AND SP
+				pop SS
+				DS = SS
+			STI
+
+		_exit:
+			return
+	}
+
+`
+The implication of DS = CS = SS is that the 'execute' function  must do some 
+extra work, to set the DS and SS to match the CS of the loaded program. And 
+when the program does exit (via a 'ret' instruction), restore it to the one 
+used before. Note also that the SP also need to be saved.
+
+C) Memory models in detail
+
+As stated earlier there are two memory models namely 'LARGE' and 'SMALL'.
+
+	a) LARGE model:
+	This model is used to keep the stack separate from the loaded program. This
+	ensures the largest space for an AP. The maximum program size if 64KB as the
+	CS and DS are set to a fixed value when the program starts running.
+	Because most C cross compilers targets DOS on a 8086 (where DS = SS is
+	asumed), the LARGE model can prove to a little tricky, when using C to
+	write programs.  I think 'OpenWatcom' with some switch can be used with 
+	this mode, as it do not assume that DS is equal to SS.
+
+	b) SMALL model:
+	This is compact model where by all the data, code and stack are
+	in the same segment and even when inside system call, the same stack will
+	be used. More modern C cross compilers work with this model by default
+	(Bruce's C Compiler, Smaller C compiler) works with this assumption that 
+	DS = SS.
+	An AP written for this model would have to be smaller than 64KB to
+	accomodate the stack in the same segment. But 64KB is a large space to work
+	with.
+
+In all this modes, it is possible to cascade call another program loaded in
+another segment. So the following calls are possible.
+
+			  (EXEC)           (EXEC)                (EXEC)
+	Loader    ------>   CMD   ------->  Program1    --------> Program2
+																| (RET)
+						CMD   <-------  Program1    <------------
+								(RET)
+
+When a AP returns it will come back to the 'execute' call and appropriate
+segment registes get restored.
+

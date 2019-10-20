@@ -1,0 +1,43 @@
+!_TAG_FILE_FORMAT	2	/extended format; --format=1 will not append ;" to lines/
+!_TAG_FILE_SORTED	1	/0=unsorted, 1=sorted, 2=foldcase/
+!_TAG_PROGRAM_AUTHOR	Darren Hiebert	/dhiebert@users.sourceforge.net/
+!_TAG_PROGRAM_NAME	Exuberant Ctags	//
+!_TAG_PROGRAM_URL	http://ctags.sourceforge.net	/official site/
+!_TAG_PROGRAM_VERSION	5.8	//
+_get_free_file_location	vfs_main.s	/^_get_free_file_location:$/;"	l
+_get_mount_point_from_drive	vfs_base.s	/^_get_mount_point_from_drive:$/;"	l
+_init	vfs_main.s	/^_init:$/;"	l
+_str_indexof	vfs_main.s	/^_str_indexof:		$/;"	l
+_str_is_equal	vfs_base.s	/^_str_is_equal:$/;"	l
+_strlen	vfs_base.s	/^_strlen:$/;"	l
+_vfs_fs_open	vfs_fs.s	/^_vfs_fs_open:$/;"	l
+endstruc	vfs_base.s	/^endstruc$/;"	l
+fileslist	vfs.s	/^fileslist: times MAX_OPEN_FILES_COUNT * file_size db 0$/;"	l
+fslist	vfs.s	/^fslist: times MAX_REGISTERED_FILESYSTEM * filesystem_size db 0$/;"	l
+fslist_count	vfs.s	/^fslist_count: dw 0$/;"	d
+get_filesystem_from_name	vfs_base.s	/^get_filesystem_from_name:$/;"	l
+get_mount_point_from_drive	vfs_base.s	/^get_mount_point_from_drive:$/;"	l
+inc	vfs_base.s	/^	inc di$/;"	d
+mountlist	vfs.s	/^mountlist: times MAX_MOUNT_POINT_COUNT * mount_point_size db 0$/;"	l
+mountlist_count	vfs.s	/^mountlist_count: dw 0$/;"	d
+pop	vfs_base.s	/^			pop ds$/;"	d
+pop	vfs_base.s	/^		pop ds$/;"	d
+pop	vfs_base.s	/^	pop di$/;"	d
+pop	vfs_base.s	/^	pop ds$/;"	d
+pop	vfs_base.s	/^	pop dx$/;"	d
+pop	vfs_main.s	/^	pop di$/;"	d
+pop	vfs_main.s	/^	pop ds$/;"	d
+pop	vfs_main.s	/^	pop dx$/;"	d
+push	vfs_base.s	/^		push ds$/;"	d
+push	vfs_base.s	/^	push di$/;"	d
+push	vfs_base.s	/^	push ds$/;"	d
+push	vfs_base.s	/^	push dx$/;"	d
+push	vfs_main.s	/^	push di$/;"	d
+push	vfs_main.s	/^	push ds$/;"	d
+push	vfs_main.s	/^	push dx$/;"	d
+struc	vfs_base.s	/^struc mount_args$/;"	l
+vfs_close	vfs_main.s	/^vfs_close:$/;"	l
+vfs_mount	vfs_base.s	/^vfs_mount:$/;"	l
+vfs_open	vfs_main.s	/^vfs_open:$/;"	l
+vfs_register_fs	vfs_base.s	/^vfs_register_fs:$/;"	l
+vfs_umount	vfs_base.s	/^vfs_umount:$/;"	l

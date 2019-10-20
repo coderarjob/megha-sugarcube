@@ -1,0 +1,50 @@
+List of the features and system calls exposed by the kernel
+------------------------------------------------------------
+
+Dated: 18/4/2019
+
+System call list
+----------------
+
+[ ] -   File access -       int open(filename)
+        Returns:			an integer file handle (used to read and write) 
+
+        Parameters: 
+        * filename          asciiz string of the file
+
+[ ] -   File access -       int close(file_handle)
+        Returns:            0 if file closed and memory freed, else 1
+
+        Parameters:
+        * file_handle       handle to file returned by open.
+
+[ ] -   File access -       int write(file_handle,data_location,count)
+        Returns:            number of bytes written
+
+        Parameters:
+        * file_handle,      file handle returned by open system call
+        * data_location,    data buffer location to be written
+        * count             number of bytes from data location to write.
+
+[ ] -   File access -       int read(file_handle,data_location,count)
+        Returns:            number of bytes read
+
+        Parameters:
+         * file_handle,     file handle returned by open system call
+         * data_location,   data buffer location to be read.
+         * count            number of bytes from data location to read.
+
+[ ]-    File access -       int stat(filename, stat_memory location)
+        Returns:            0 is success.
+
+		Parameters:
+		* file_name			file name to get the status of
+		* stat_memory       location to the stat_memory structure.
+
+		struct stat_memory{
+			int32 st_size         Total size in bytes
+			int16 st_blocks       Number of 512B blocks allocated for the file.
+		}
+
+[ ]-    Process -           int exec(filename, memory_location)
+		Returns				0

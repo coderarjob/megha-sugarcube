@@ -1,0 +1,571 @@
+     1                                  ; Megha Operating System Panic/Debug module.
+     2                                  ; The functions in this file is called by the kernel, drivers or application
+     3                                  ; programs.
+     4                                  ; It also containts the PANIC routine (INT 0x42) - Previously it was a separate
+     5                                  ; module.
+     6                                  
+     7                                  ; Build version: 0.11 (240819)
+     8                                  
+     9                                  ; Initial release: 10th Aug 2019
+    10                                  ; -------------------------------
+    11                                  ; Changes in 0.11 (24th Aug 2019)
+    12                                  ; -------------------------------
+    13                                  ; * No longer uses despatcher module for despatching. Uses its own despatcher
+    14                                  ; * Contain the PANIC method. Previously it was separate module.
+    15                                  ; * Detailed PANIC routine. It shows the stack and MDA dump, and registers
+    16                                  ;   values.
+    17                                  ; * printstr is not copy_to_screen. It now supports CR and LF characters.
+    18                                  
+    19                                  ; Every driver and application programs start at location 0x64
+    20                                  ; The above area (0 to 0x63) is for future use, and not used currently.
+    21                                  	ORG 0x64
+    22                                  
+    23                                  ; The first function in a module/driver program is a _init function. 
+    24                                  ; This function is responsible for setting up the driver - install routines 
+    25                                  ; into IVT etc. 
+    26                                  
+    27                                  _init:
+    28 00000000 60                      	pusha
+    29                                  	    ; Add the local despatcher routine to IVT
+    30 00000001 31DB                    	    xor bx, bx
+    31 00000003 8EC3                    	    mov es, bx
+    32 00000005 26C7060401[2300]        	    mov [es:0x41*4],word _despatcher
+    33 0000000C 268C0E0601              	    mov [es:0x41*4+2],cs
+    34                                  
+    35                                  	    ; Add the PANIC routine to IVT
+    36 00000011 31DB                    	    xor bx, bx
+    37 00000013 8EC3                    	    mov es, bx
+    38 00000015 26C7060801[3700]        	    mov [es:0x42*4],word panic
+    39 0000001C 268C0E0A01              	    mov [es:0x42*4+2],cs
+    40 00000021 61                      	popa
+    41                                  
+    42                                  	; RETF is a must to be able to return to the loader.
+    43 00000022 CB                      	retf
+    44                                  
+    45                                  ; This module has its own despather and do not use the system despatcher for
+    46                                  ; its work. The reason for this is to keep the GURU module independent from the
+    47                                  ; rest of the system and is an independent module that do not depend on any
+    48                                  ; other.
+    49                                  ; Input:
+    50                                  ; 		BX - Routine number
+    51                                  ; Output:
+    52                                  ;		BX - Output from the called routine.
+    53                                  ; Note:
+    54                                  ;		All the registers except BX are saved and restored in the despatcher.
+    55                                  ;		DS is kept unchanged. Data segment of the caller. Local data is
+    56                                  ; 		accessed using the CS register.
+    57                                  ;		ES register is also unchanges, but can be chanded in any routine.
+    58                                  _despatcher:
+    59 00000023 1E                      	push ds
+    60 00000024 50                      	push ax
+    61 00000025 51                      	push cx
+    62 00000026 52                      	push dx
+    63 00000027 56                      	push si
+    64 00000028 57                      	push di
+    65                                  
+    66                                  	; Each of the entry in the call vector is 2 bytes.
+    67                                  	; So the below statement multiplies bx by 2
+    68 00000029 D1E3                    	shl bx, 1
+    69 0000002B 2EFF97[E902]            	call [cs:callvector+bx]
+    70                                  
+    71 00000030 5F                      	pop di
+    72 00000031 5E                      	pop si
+    73 00000032 5A                      	pop dx
+    74 00000033 59                      	pop cx
+    75 00000034 58                      	pop ax
+    76 00000035 1F                      	pop ds
+    77                                  
+    78                                  	; IRET is requried as this routine will be called via INT
+    79 00000036 CF                      	iret
+    80                                  
+    81                                  ; Displays an error message on the screen and halts the processor
+    82                                  ; Input:
+    83                                  ;		STACK - A ASCIIZ string that needs to be displayed.
+    84                                  ;			  - DS is used for data segment
+    85                                  ; Ouput:
+    86                                  ;		None
+    87                                  panic:
+    88 00000037 55                      	push bp
+    89 00000038 89E5                    	mov bp, sp
+    90                                  
+    91                                  	; Allote 20 bytes for storing 10 register values (Each a word)
+    92 0000003A 83EC14                  	sub sp,20
+    93                                  
+    94                                  ;	params structure points to each of the values that are pushed into the
+    95                                  ;	stack when calling the panic routine. This includes the error string as 
+    96                                  ;	well.
+    97                                  ;	The structure begins at an offet of 2 because of the PUSH BP statement
+    98                                  ;	above. Will be used to retrive the value of CS:IP from the stack.
+    99                                  ;	Use: mov ax, [bp + params.cs]
+   100                                  struc params,2
+   101 00000002 <res 00000002>          	.cs: resw 1
+   102 00000004 <res 00000002>          	.ip: resw 1
+   103 00000006 <res 00000002>          	.flag: resw 1
+   104 00000008 <res 00000002>          	.error: resw 1
+   105                                  endstruc
+   106                                  
+   107                                  struc reg,2
+   108 00000002 <res 00000002>          	.ax: resw 1	; Top most
+   109 00000004 <res 00000002>          	.bx: resw 1
+   110 00000006 <res 00000002>          	.cx: resw 1
+   111 00000008 <res 00000002>          	.dx: resw 1
+   112 0000000A <res 00000002>          	.si: resw 1
+   113 0000000C <res 00000002>          	.di: resw 1
+   114 0000000E <res 00000002>          	.es: resw 1
+   115 00000010 <res 00000002>          	.ds: resw 1
+   116 00000012 <res 00000002>          	.ss: resw 1
+   117 00000014 <res 00000002>          	.sp: resw 1
+   118                                  endstruc
+   119                                  
+   120                                  	; Save the register values into the stack. These will be used when
+   121                                  	; displaying their values
+   122 0000003D 8946FE                  	mov [bp - reg.ax], ax
+   123 00000040 895EFC                  	mov [bp - reg.bx], bx
+   124 00000043 894EFA                  	mov [bp - reg.cx], cx
+   125 00000046 8956F8                  	mov [bp - reg.dx], dx
+   126 00000049 8976F6                  	mov [bp - reg.si], si
+   127 0000004C 897EF4                  	mov [bp - reg.di], di
+   128 0000004F 8C46F2                  	mov [bp - reg.es], es
+   129 00000052 8C5EF0                  	mov [bp - reg.ds], ds
+   130 00000055 8C56EE                  	mov [bp - reg.ss], ss
+   131 00000058 896EEC                  	mov [bp - reg.sp], bp
+   132                                  
+   133                                  
+   134                                  	; ======================= Clear the screen
+   135 0000005B E8CD01                  	call clear
+   136                                  	; ======================= Display the error message
+   137 0000005E 8B4608                  	mov ax, [bp + params.error]
+   138 00000061 E8E801                  	call copy_to_screen
+   139                                  
+   140                                  	; At this point no data needs to be accessed from the Caller's side, so we
+   141                                  	; repurpose the ES register so that it can be used to call the below
+   142                                  	; routines.
+   143 00000064 8CCB                    	mov bx, cs
+   144 00000066 8EDB                    	mov ds, bx
+   145 00000068 8EC3                    	mov es, bx
+   146                                  
+   147                                  	; ================= Dump a few memory locations
+   148                                  
+   149                                  	; Dump the Stack (SS:BP)
+   150 0000006A B8[C600]                	mov ax, .panic_stack_dump_msg
+   151 0000006D E8DC01                  	call copy_to_screen	; Prints a asciiz string in ES:AX
+   152                                  
+   153 00000070 8CD0                    	mov ax, ss
+   154 00000072 89EA                    	mov dx, bp
+   155 00000074 B94000                  	mov cx, 0x40
+   156 00000077 E8E200                  	call hexdump
+   157                                  
+   158                                  	; Dump the MDA
+   159 0000007A B8[D500]                	mov ax, .panic_mda_dump_msg
+   160 0000007D E8CC01                  	call copy_to_screen	; Prints a asciiz string in ES:AX
+   161                                  
+   162 00000080 B80008                  	mov ax, MDA_SEG
+   163 00000083 BA0000                  	mov dx, MDA_OFF
+   164 00000086 B92000                  	mov cx, 0x20
+   165 00000089 E8D000                  	call hexdump
+   166                                  
+   167                                  	; ===================== Write out the registers (CS and IP)
+   168 0000008C B91000                  	mov cx, 16
+   169 0000008F 8D3E[FF00]              	lea di, [.panic_registers+6]
+   170                                  
+   171 00000093 8B4602                  	mov ax, [bp + params.cs]
+   172 00000096 E81402                  	call _printhex
+   173 00000099 83C708                  	add di, 8
+   174                                  
+   175 0000009C 8B4604                  	mov ax, [bp + params.ip]
+   176 0000009F E80B02                  	call _printhex
+   177 000000A2 83C708                  	add di, 8
+   178                                  
+   179                                  	; ====================== Write the rest of the registers
+   180                                  	; There are 10 registers, whoes values we are going to display
+   181 000000A5 B90A00                  	mov cx, 10
+   182 000000A8 8D5EFE                  	lea bx, [bp - reg.ax]
+   183                                  .next:
+   184 000000AB 51                      		push cx
+   185 000000AC B91000                  			mov cx, 16
+   186 000000AF 368B07                  			mov ax, [ss:bx]
+   187 000000B2 E8F801                  			call _printhex
+   188 000000B5 83C708                  			add di, 8
+   189                                  
+   190                                  			; We subtract the BX register, so that it can point to the next
+   191                                  			; word that is below the current one.
+   192 000000B8 83EB02                  			sub bx, 2
+   193 000000BB 59                      		pop cx
+   194 000000BC E2ED                    	loop .next
+   195                                  
+   196                                  	; Dump the registers string
+   197 000000BE B8[F900]                	mov ax, .panic_registers
+   198 000000C1 E88801                  	call copy_to_screen	; Prints a asciiz string in ES:AX
+   199 000000C4 EBFE                    	jmp $
+   200                                  
+   201                                  ; ======================== PANIC ROUTINE ===================
+   202 000000C6 0A0D0A537461636B20-     .panic_stack_dump_msg: db 10,13,10,"Stack dump:",0
+   202 000000CF 64756D703A00       
+   203 000000D5 0D0A0A466972737420-     .panic_mda_dump_msg:   db 13,10,10,"First 32 bytes in MOS Data Area:",0
+   203 000000DE 333220627974657320-
+   203 000000E7 696E204D4F53204461-
+   203 000000F0 746120417265613A00 
+   204 000000F9 0A0D0A43533A2D2D2D-     .panic_registers: db 10,13,10,"CS:---- IP:---- AX:---- BX:---- CX:---- "
+   204 00000102 2D2049503A2D2D2D2D-
+   204 0000010B 2041583A2D2D2D2D20-
+   204 00000114 42583A2D2D2D2D2043-
+   204 0000011D 583A2D2D2D2D20     
+   205 00000124 44583A2D2D2D2D2053-                       db          "DX:---- SI:---- DI:---- ES:---- DS:---- "
+   205 0000012D 493A2D2D2D2D204449-
+   205 00000136 3A2D2D2D2D2045533A-
+   205 0000013F 2D2D2D2D2044533A2D-
+   205 00000148 2D2D2D20           
+   206 0000014C 53533A2D2D2D2D2053-     				  db          "SS:---- SP:----",0
+   206 00000155 503A2D2D2D2D00     
+   207                                  
+   208                                  ; Prints the hex representation of bytes in memory location
+   209                                  ; Input: AX:DX - Location of the memory location, AX is the Segment, DX is the
+   210                                  ;                offet in the segment.
+   211                                  ;        CX    - Number of bytes to show
+   212                                  ; Output: none
+   213                                  hexdump:
+   214 0000015C 60                      	pusha
+   215 0000015D 06                      	push es
+   216                                  		; Because there is no need to access caller data, we override ES and DS
+   217                                  		; to suite our needs.
+   218 0000015E 8CCB                    		mov bx, cs
+   219 00000160 8EC3                    		mov es, bx
+   220 00000162 8EDB                    		mov ds, bx
+   221                                  
+   222                                  		; This is again for our ease of use. As DX cannot be used in an
+   223                                  		; effective address, but si can be used.
+   224 00000164 89D6                    		mov si, dx
+   225                                  
+   226                                  		; From here on the destination location is addressed by AX:SI
+   227 00000166 EB0D                    		jmp .reset
+   228                                  .again:	
+   229 00000168 83FA00                  		cmp dx, 0
+   230 0000016B 7531                    		jne .body
+   231                                  
+   232                                  		; Display the current dump line
+   233 0000016D 60                      		pusha
+   234 0000016E B8[E601]                			mov ax, .dump_line
+   235 00000171 E8D800                  			call copy_to_screen
+   236 00000174 61                      		popa
+   237                                  
+   238                                  .reset:
+   239                                  		; Reset the dump line to the template
+   240 00000175 8D3E[E801]              		lea di,[.dump_line + 2]
+   241 00000179 60                      		pusha		
+   242 0000017A BF[E601]                			mov di, .dump_line
+   243 0000017D BE[C101]                			mov si, .template
+   244 00000180 B92500                  			mov cx, .template_len
+   245 00000183 F3A4                    			rep movsb
+   246 00000185 61                      		popa	
+   247                                  		
+   248                                  		; Fill in the template
+   249                                  .headers:
+   250 00000186 51                      		push cx
+   251                                  			; Print the Segment part
+   252 00000187 B91000                  			mov cx, 16
+   253 0000018A E82001                  			call _printhex
+   254 0000018D 83C705                  			add di, 5
+   255                                  		
+   256 00000190 50                      			push ax
+   257                                  				; Print the offset
+   258 00000191 89F0                    				mov ax, si
+   259 00000193 E81701                  				call _printhex
+   260 00000196 58                      			pop ax
+   261 00000197 83C706                  			add di, 6
+   262 0000019A 59                      		pop cx
+   263                                  		
+   264 0000019B BA0800                  		mov dx, 8
+   265                                  .body:
+   266                                  		; Read 8 (or remaining)  bytes from AX:DX and put it 
+   267                                  		; into .dump_line
+   268 0000019E 50                      		push ax
+   269 0000019F 51                      		push cx
+   270 000001A0 06                      			push es
+   271 000001A1 8EC0                    				mov es, ax
+   272 000001A3 268B04                  				mov ax,[es:si]
+   273 000001A6 07                      			pop es
+   274 000001A7 B90800                  			mov cx, 8
+   275 000001AA E80001                  			call _printhex
+   276 000001AD 83C703                  			add di, 3
+   277 000001B0 46                      			inc si
+   278 000001B1 59                      		pop cx	
+   279 000001B2 58                      		pop ax
+   280                                  
+   281 000001B3 4A                      		dec dx
+   282 000001B4 E2B2                    		loop .again
+   283                                  
+   284                                  		; Display the last dump line.
+   285 000001B6 50                      		push ax
+   286 000001B7 B8[E601]                			mov ax, .dump_line
+   287 000001BA E88F00                  			call copy_to_screen
+   288 000001BD 58                      		pop ax
+   289 000001BE 07                      	pop es
+   290 000001BF 61                      	popa
+   291 000001C0 C3                      	ret
+   292 000001C1 0D0A2D2D2D2D3A2D2D-     .template: db 13,10,"----:----  -- -- -- -- -- -- -- --",0
+   292 000001CA 2D2D20202D2D202D2D-
+   292 000001D3 202D2D202D2D202D2D-
+   292 000001DC 202D2D202D2D202D2D-
+   292 000001E5 00                 
+   293                                  .template_len: equ $ - .template
+   294 000001E6 <res 00000025>          .dump_line: resb .template_len
+   294          ******************       warning: uninitialized space declared in .text section: zeroing [-w+other]
+   295                                  
+   296                                  ; Copies one character with attribute in the VBA memory.
+   297                                  ; This function also maintains the current offset in the VGA memory
+   298                                  ; Input: BL - Character to print
+   299                                  ;        BH - Attribute
+   300                                  _putchar:
+   301 0000020B 06                      	    push es
+   302 0000020C 53                      	    push bx
+   303 0000020D 57                      	    push di
+   304                                  
+   305                                  		; setup the segment (ES), and offset (DI) value.
+   306 0000020E 53                      		push bx
+   307 0000020F BB00B8                  		    mov bx, 0xb800
+   308 00000212 8EC3                    		    mov es, bx
+   309 00000214 5B                      		pop bx
+   310 00000215 2E8B3E[E702]            		mov di, [cs:vga_offset]
+   311                                  
+   312                                  		; print out the character and attribute byte
+   313 0000021A 26881D                  		mov [es:di], bl
+   314 0000021D 26887D01                		mov [es:di + 1], bh
+   315                                  		
+   316                                  		; We increment the offset variable
+   317 00000221 2E8306[E702]02          		add [cs:vga_offset], word 2
+   318 00000227 5F                      	    pop di
+   319 00000228 5B                      	    pop bx
+   320 00000229 07                      	    pop es
+   321 0000022A C3                      	ret
+   322                                  
+   323                                  ; Clears the vga memory, and resets the vga_offset value to zero
+   324                                  ; Input: none 
+   325                                  ; Output: none
+   326                                  clear:
+   327 0000022B 51                      	    push cx
+   328 0000022C 50                      	    push ax
+   329 0000022D 57                      	    push di
+   330 0000022E 06                      	    push es
+   331 0000022F B800B8                  	    	mov ax, 0xb800
+   332 00000232 8EC0                    			mov es, ax
+   333 00000234 BF0000                  			mov di, 0
+   334                                  
+   335 00000237 B80000                  			mov ax, 0x0
+   336 0000023A B9D007                  			mov cx, 2000		; 80 words/row, 25 rows	
+   337 0000023D FC                      			cld
+   338 0000023E F3AB                    			rep stosw
+   339                                  
+   340 00000240 2EC706[E702]0000        			mov [cs:vga_offset], word 0
+   341 00000247 07                                  pop es
+   342 00000248 5F                      	    pop di
+   343 00000249 58                      	    pop ax
+   344 0000024A 59                      	    pop cx
+   345                                  	; Must be far return, because the despatcher reside in another segmnet.
+   346 0000024B C3                      	ret
+   347                                  
+   348                                  ; Copies a zascii stirng of bytes to VGA memory. It handles CR and LF
+   349                                  ; characters properly.
+   350                                  ; Input: Address to print is in DS:AX
+   351                                  ; Output: none
+   352                                  copy_to_screen:
+   353 0000024C 56                      	push si
+   354 0000024D 53                      	push bx
+   355                                  
+   356 0000024E 89C6                    	    mov si, ax
+   357 00000250 B70F                    	    mov bh, DEFAULT_TEXT_COLOR	
+   358                                  .rep:
+   359 00000252 8A1C                    	    mov bl, [si]
+   360 00000254 80FB00                  	    cmp bl, 0
+   361 00000257 741A                    	    je .end
+   362                                  
+   363 00000259 80FB0D                  	    cmp bl, 13
+   364 0000025C 7505                    	    jne .lf
+   365                                  
+   366                                  	    ; Handle CR
+   367 0000025E E81500                  	    call _cr
+   368 00000261 EB0D                    	    jmp .loop
+   369                                  .lf:
+   370 00000263 80FB0A                  	    cmp bl, 10
+   371 00000266 7505                    	    jne .normal
+   372                                  	   
+   373                                  	    ; Handle LF
+   374 00000268 E81E00                  	    call _lf
+   375 0000026B EB03                    	    jmp .loop
+   376                                  .normal:
+   377 0000026D E89BFF                  	    call _putchar
+   378                                  
+   379                                  .loop:
+   380 00000270 46                      	    inc si
+   381 00000271 EBDF                    	    jmp .rep
+   382                                  .end:
+   383 00000273 5B                      	pop bx
+   384 00000274 5E                      	pop si
+   385                                  	; Must be far return, because the despatcher reside in another segmnet.
+   386 00000275 C3                      	ret		
+   387                                  
+   388                                  ; Implementation of the Carrage Return. Next character is printed at the first
+   389                                  ; column of the current line.
+   390                                  ; Input:
+   391                                  ;	None
+   392                                  ; Output:
+   393                                  ;	None
+   394                                  _cr:
+   395 00000276 60                      	pusha
+   396                                  	    ; Byte number = current_offset % 160
+   397 00000277 31D2                    	    xor dx, dx
+   398 00000279 2EA1[E702]              	    mov ax, [cs:vga_offset]
+   399 0000027D BBA000                  	    mov bx, 160
+   400 00000280 F7F3                    	    div bx	; AX = DX:AX / BX and
+   401                                  	    		; DX = DX:AX % BX
+   402                                  
+   403                                  	    ; Start of the current line = current_offset - byte number
+   404 00000282 2E2916[E702]            	    sub [cs:vga_offset], DX
+   405 00000287 61                      	popa
+   406 00000288 C3                      	ret
+   407                                  
+   408                                  ; Implementation of Line Feed. Next character is printed in the next line at
+   409                                  ; the next column.
+   410                                  ; Input:
+   411                                  ;	None
+   412                                  ; Output (in BX):
+   413                                  ;	None
+   414                                  _lf:
+   415 00000289 2E8106[E702]A000        	add [cs:vga_offset],word 160
+   416 00000290 C3                      	ret
+   417                                  
+   418                                  ; Displays hexadecimal representation of a 16/8 bit number.
+   419                                  ; Input: AX -> Number
+   420                                  ;        CX -> Number of bits to show in the hex display.
+   421                                  ;              16 - to see 16 bit hex
+   422                                  ;              8  - to see 8 bit hex (will show only AL)
+   423                                  ;	       Note: 0 < CX < 16 and CX is divisible by 4
+   424                                  ; Output: None
+   425                                  printhex:
+   426 00000291 1E                      	push ds
+   427 00000292 53                      	push bx
+   428 00000293 57                      	push di
+   429                                  	
+   430                                  	    ; Put the hex value into the .buffer
+   431 00000294 BF[A802]                	    mov di, .buffer
+   432 00000297 E81300                  	    call _printhex
+   433                                  		
+   434                                  	    ; Display the string
+   435 0000029A B8[A802]                	    mov ax, .buffer
+   436 0000029D 8CC8                    		mov ax, cs
+   437 0000029F 8ED8                    		mov ds, ax
+   438 000002A1 E8A8FF                  	    call copy_to_screen
+   439                                  
+   440 000002A4 5F                      	pop di
+   441 000002A5 5B                      	pop bx
+   442 000002A6 1F                      	pop ds
+   443 000002A7 C3                      	ret
+   444 000002A8 <res 00000004>          .buffer: resb 4		; Place for 4 characters from _printhex
+   444          ******************       warning: uninitialized space declared in .text section: zeroing [-w+other]
+   445 000002AC 00                      	 db 0		; and a end of string indicatior
+   446                                  
+   447                                  ; Prints out hexadecimal representation of a 16/8 bit number.
+   448                                  ; Input: AX -> Number
+   449                                  ;        CX -> Number of bits to show in the hex display.
+   450                                  ;              16 - to see 16 bit hex
+   451                                  ;              8  - to see 8 bit hex (will show only AL)
+   452                                  ;	       Note: 0 < CX < 16 and CX is divisible by 4
+   453                                  ;	ES:DI -> Write location 
+   454                                  ; Output: None
+   455                                  _printhex:
+   456 000002AD 57                      		push di
+   457 000002AE 51                      	    push cx
+   458 000002AF 53                      	    push bx
+   459 000002B0 50                      	    push ax
+   460                                  
+   461                                  		; Number of times the below loop need to loop
+   462                                  		; Number of itterations = CX/4
+   463 000002B1 89CB                    		mov bx, cx
+   464 000002B3 C1EB02                  		shr bx, 2
+   465                                  	
+   466                                  		; We Shift the number so many times so that the required bits
+   467                                  		; come to the extreme left.
+   468                                  		; Number of left shits = (16 - CX) or -(CX - 16)
+   469 000002B6 83E910                  		sub cx, 16
+   470 000002B9 F7D9                    		neg cx
+   471 000002BB D3E0                    		shl ax, cl
+   472                                  
+   473                                  		; Load the number of loop itteration into CX
+   474 000002BD 89D9                    		mov cx, bx		; we are doing 16 bits, so 4 hex chars
+   475                                  .rep:
+   476 000002BF 89C3                    		mov bx, ax		; just save the input
+   477 000002C1 C1EB0C                  		shr bx, 12		; left most nibble to the right most
+   478 000002C4 2E8A9F[D702]            		mov bl, [cs:.hexchars + bx]; Get the hex character
+   479 000002C9 26881D                  		mov [es:di], bl
+   480 000002CC 47                      		inc di
+   481                                  
+   482 000002CD C1E004                  		shl ax, 4		; Position the next nibble
+   483 000002D0 E2ED                    		loop .rep
+   484                                  		
+   485 000002D2 58                      	    pop ax
+   486 000002D3 5B                      	    pop bx
+   487 000002D4 59                      	    pop cx
+   488 000002D5 5F                      		pop di
+   489 000002D6 C3                      	ret
+   490 000002D7 303132333435363738-     .hexchars: db "0123456789ABCDEF"
+   490 000002E0 39414243444546     
+   491                                  
+   492                                  ;section .data
+   493 000002E7 0000                    vga_offset: dw  0
+   494                                  
+   495                                  ; ======================== INCLUDE FILES ===================
+   496                                  %include "../include/mos.inc"
+     1                              <1> ; Main include file for kernel, driver and application developers.
+     2                              <1> ; It includes the function numbers for all interrupts in the MOS kernel.
+     3                              <1> ; It also includes some version information of various files in this release of
+     4                              <1> ; the MOS Operating System.
+     5                              <1> 
+     6                              <1> %ifndef __MOS_INC__
+     7                              <1> 	%define __MOS_INC__
+     8                              <1> 
+     9                              <1> 	; Version informations
+    10                              <1> 	%define 	MOS_VER 		"0.1  (110819)"
+    11                              <1> 	%define 	BOOTLOADER_VER 	"0.32 (110819)"
+    12                              <1> 	%define 	LOADER_VER		"0.21  (130819)"
+    13                              <1> 	%define		DEBUG_DRV_VER	"0.1  (100819)"
+    14                              <1> 	%define		KERNEL_VER		"0.1 (180819)"
+    15                              <1> 
+    16                              <1> 	; Settings: -
+    17                              <1> 		; Colors and look and feel
+    18                              <1> 			DEFAULT_TEXT_COLOR:		EQU	0xF		; WHITE
+    19                              <1> 
+    20                              <1> 		; String Comparison
+    21                              <1> 		MATCH_CASE_INSENSITIVE: 	EQU 0
+    22                              <1> 		MATCH_CASE_SENSITIVE: 		EQU 1
+    23                              <1> 		STRING_MATCH: 				EQU MATCH_CASE_INSENSITIVE
+    24                              <1> 
+    25                              <1> 	; Segment and fixed lengths of different parts of MOS
+    26                              <1> 	MDA_SEG:		EQU 	0x800
+    27                              <1> 	MDA_OFF:		EQU		0x0
+    28                              <1> 	MDA_LEN:		EQU		1024
+    29                              <1> 
+    30                              <1> 	LOADER_SEG		EQU		0x800
+    31                              <1> 	LOADER_OFF:		EQU		0x100
+    32                              <1> 	LOADER_LEN:		EQU		768
+    33                              <1> 
+    34                              <1> 	MODULE0_SEG:	EQU		0x840
+    35                              <1> 	MODULE0_OFF:	EQU		0x64
+    36                              <1> 	
+    37                              <1> 	; Routines in guru.mod (accessed via INT 0x41)
+    38                              <1> 	GURU_PRINTHEX			EQU 0
+    39                              <1> 	GURU_PRINTSTRING		EQU 1
+    40                              <1> 	GURU_CLEARSCREEN		EQU 2
+    41                              <1> 	GURU_HEXDUMP			EQU 3
+    42                              <1> 
+    43                              <1> 	; Routines in despatcher.mod (accessed via INT 0x40)
+    44                              <1> 	DS_ADD_ROUTINE			EQU 0x30
+    45                              <1> 
+    46                              <1> 	; Routines in vfs.mod (accessed via INT 0x40)
+    47                              <1> 	VFS_OPEN				EQU 0xA
+    48                              <1> 	VFS_CLOSE				EQU 0xB
+    49                              <1> 	VFS_MOUNT				EQU 0xC
+    50                              <1> 	VFS_UMOUNT				EQU 0xD
+    51                              <1> 	VFS_REGISTER_FS			EQU 0xE
+    52                              <1> %endif
+   497                                  ; ======================== LOCAL DATA ======================
+   498 000002E9 [9102][4C02][2B02]-     callvector: dw printhex,copy_to_screen,clear,hexdump
+   498 000002EF [5C01]             

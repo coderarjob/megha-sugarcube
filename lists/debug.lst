@@ -1,0 +1,215 @@
+     1                                  ; Megha Operating System Panic/Debug module.
+     2                                  ; The functions in this file is called by the kernel, drivers or application
+     3                                  ; programs.
+     4                                  ; Build version: 0.1 (100819)
+     5                                  ;
+     6                                  ; Initial release: 10th Aug 2019
+     7                                  ; 
+     8                                  
+     9                                  ; Every driver and application programs start at location 0x64
+    10                                  ; The above area (0 to 0x63) is for future use, and not used currently.
+    11                                  	ORG 0x64
+    12                                  
+    13                                  ; The first function in a driver program is a _init function. This function is
+    14                                  ; responsible for setting up the driver - install routines into IVT etc. 
+    15                                  _init:
+    16 00000000 60                      	pusha
+    17                                  
+    18                                  	    ; Add various function to the despatcher
+    19                                  
+    20                                  	    ;printhex
+    21 00000001 BB3000                  	    mov bx, DS_ADD_ROUTINE	; call AddRoutine function
+    22 00000004 B0FF                    	    mov al, 0xFF
+    23 00000006 8CC9                    	    mov cx, cs
+    24 00000008 BA[A300]                	    mov dx, printhex
+    25 0000000B CD41                    	    int 0x41
+    26                                  
+    27                                  	    ;printstr
+    28 0000000D BB3000                  	    mov bx, DS_ADD_ROUTINE	; call AddRoutine function
+    29 00000010 B001                    	    mov al, DB_PRINTSTR
+    30 00000012 8CC9                    	    mov cx, cs
+    31 00000014 BA[8C00]                	    mov dx, printstr
+    32 00000017 CD41                    	    int 0x41
+    33                                  
+    34                                  	    ;clear
+    35 00000019 BB3000                  	    mov bx, DS_ADD_ROUTINE	; call AddRoutine function
+    36 0000001C B002                    	    mov al, DB_CLEARSCR
+    37 0000001E 8CC9                    	    mov cx, cs
+    38 00000020 BA[6C00]                	    mov dx, clear
+    39 00000023 CD41                    	    int 0x41
+    40                                  	
+    41 00000025 61                      	popa
+    42                                  
+    43                                  	; RETF is a must to be able to return to the loader.
+    44 00000026 CB                      	retf
+    45                                  
+    46                                  ; Prints the hex representation of bytes in memory location
+    47                                  ; Input: AX:DX - Location of the memory location
+    48                                  ;        CX    - Number of bytes to show
+    49                                  ; Output: none
+    50                                  hexdump:
+    51 00000027 89CB                    	mov bx, cx
+    52 00000029 C3                      	ret
+    53 0000002A 787878783A78787878-     .hexdump_template: db "xxxx:xxxx    01 02 03 04 05 06 07 08"
+    53 00000033 202020203031203032-
+    53 0000003C 203033203034203035-
+    53 00000045 203036203037203038 
+    54                                  
+    55                                  ; Copies one character with attribute in the VBA memory.
+    56                                  ; This function also maintains the current offset in the VGA memory
+    57                                  ; Input: BL - Character to print
+    58                                  ;        BH - Attribute
+    59                                  putchar:
+    60 0000004E 06                      	    push es
+    61 0000004F 53                      	    push bx
+    62 00000050 57                      	    push di
+    63                                  
+    64                                  		; setup the segment (ES), and offset (DI) value.
+    65 00000051 53                      	    	push bx
+    66 00000052 BB00B8                  		    mov bx, 0xb800
+    67 00000055 8EC3                    		    mov es, bx
+    68 00000057 5B                      		pop bx
+    69 00000058 8B3E[0000]              		mov di, [vga_offset]
+    70                                  
+    71                                  		; print out the character and attribute byte
+    72 0000005C 26881D                  		mov [es:di], bl
+    73 0000005F 26887D01                		mov [es:di + 1], bh
+    74                                  		
+    75                                  		; We increment the offset variable
+    76 00000063 8006[0000]02            		add [vga_offset], byte 2
+    77 00000068 5F                      	    pop di
+    78 00000069 5B                      	    pop bx
+    79 0000006A 07                      	    pop es
+    80 0000006B C3                      	ret
+    81                                  
+    82                                  ; Clears the vga memory, and resets the vga_offset value to zero
+    83                                  ; Input: none 
+    84                                  ; Output: none
+    85                                  clear:
+    86 0000006C 51                      	    push cx
+    87 0000006D 50                      	    push ax
+    88 0000006E 57                      	    push di
+    89 0000006F 06                      	    push es
+    90 00000070 B800B8                  	    	mov ax, 0xb800
+    91 00000073 8EC0                    		mov es, ax
+    92 00000075 BF0000                  		mov di, 0
+    93                                  
+    94 00000078 B80000                  		mov ax, 0x0
+    95 0000007B B9D007                  		mov cx, 2000		; 80 words/row, 25 rows	
+    96 0000007E FC                      		cld
+    97 0000007F F3AB                    		rep stosw
+    98                                  
+    99 00000081 C706[0000]0000          		mov [vga_offset], word 0
+   100 00000087 07                                  pop es
+   101 00000088 5F                      	    pop di
+   102 00000089 58                      	    pop ax
+   103 0000008A 59                      	    pop cx
+   104 0000008B CB                      	retf
+   105                                  
+   106                                  ; Copies a zascii stirng of bytes to VGA memory.
+   107                                  ; Input: Address to print is in ES:AX
+   108                                  ; Output: none
+   109                                  printstr:
+   110 0000008C 56                      	push si
+   111 0000008D 53                      	push bx
+   112                                  
+   113 0000008E 89C6                    	    mov si, ax
+   114 00000090 B70F                    	    mov bh, 0xF
+   115                                  .rep:
+   116 00000092 268A1C                  	    mov bl, [es:si]
+   117 00000095 80FB00                  	    cmp bl, 0
+   118 00000098 7406                    	    je .end
+   119 0000009A E8B1FF                  	    call putchar
+   120 0000009D 46                      	    inc si
+   121 0000009E EBF2                    	    jmp .rep
+   122                                  .end:
+   123 000000A0 5B                      	pop bx
+   124 000000A1 5E                      	pop si
+   125 000000A2 CB                      	retf		
+   126                                  ; Prints out hexadecimal representation of a 16/8 bit number.
+   127                                  ; Input: AX -> Number
+   128                                  ;        CX -> Number of bits to show in the hex display.
+   129                                  ;              16 - to see 16 bit hex
+   130                                  ;              8  - to see 8 bit hex (will show only AL)
+   131                                  ;	       Note: 0 < CX < 16 and CX is divisible by 4
+   132                                  ; Output: None
+   133                                  ;
+   134                                  ; We need to save ES registers, as we it contains the DS of the caller.
+   135                                  ; All the other registers are taken care of in the dispatcher.
+   136                                  printhex:
+   137 000000A3 06                      	    push es
+   138 000000A4 51                      	    push cx
+   139 000000A5 53                      	    push bx
+   140 000000A6 50                      	    push ax
+   141                                  
+   142                                  		; Number of times the below loop need to loop
+   143                                  		; Number = CX/4
+   144 000000A7 89CB                    		mov bx, cx
+   145 000000A9 C1EB02                  		shr bx, 2
+   146                                  	
+   147                                  		; We Shift the number so many times so that the required bits
+   148                                  		; come to the extreme left.
+   149 000000AC 83E910                  		sub cx, 16
+   150 000000AF F7D9                    		neg cx
+   151 000000B1 D3E0                    		shl ax, cl
+   152                                  
+   153                                  		; Load the number of loop itteration into CX
+   154 000000B3 89D9                    		mov cx, bx		; we are doing 16 bits, so 4 hex chars
+   155                                  .rep:
+   156 000000B5 89C3                    		mov bx, ax		; just save the input
+   157 000000B7 C1EB0C                  		shr bx, 12		; left most nibble to the right most
+   158 000000BA 8A9F[CD00]              		mov bl, [.hexchars + bx]; Get the hex character
+   159 000000BE B70F                    		mov bh, 0xF		; print the character in WHITE
+   160 000000C0 E88BFF                  		call putchar		; prints the character and incremnts
+   161                                  					; the offset in vga memory
+   162 000000C3 C1E004                  		shl ax, 4		; Position the next nibble
+   163 000000C6 E2ED                    		loop .rep
+   164                                  		
+   165 000000C8 58                      	    pop ax
+   166 000000C9 5B                      	    pop bx
+   167 000000CA 59                      	    pop cx
+   168 000000CB 07                      	    pop es
+   169 000000CC CB                      	retf
+   170 000000CD 303132333435363738-     .hexchars: db "0123456789ABCDEF"
+   170 000000D6 39414243444546     
+   171                                  
+   172                                  section .data
+   173 00000000 0000                    vga_offset: dw  0
+   174                                  
+   175                                  ; ======================== INCLUDE FILES ===================
+   176                                  %include "../include/mos.inc"
+     1                              <1> ; Main include file for kernel, driver and application developers.
+     2                              <1> ; It includes the function numbers for all interrupts in the MOS kernel.
+     3                              <1> ; It also includes some version information of various files in this release of
+     4                              <1> ; the MOS Operating System.
+     5                              <1> 
+     6                              <1> %ifndef __MOS_INC__
+     7                              <1> 	%define __MOS_INC__
+     8                              <1> 	
+     9                              <1> 	%define 	MOS_VER 		"0.1  (110819)"
+    10                              <1> 	%define 	BOOTLOADER_VER 	"0.32 (110819)"
+    11                              <1> 	%define 	LOADER_VER		"0.21  (130819)"
+    12                              <1> 	%define		DEBUG_DRV_VER	"0.1  (100819)"
+    13                              <1> 	%define		KERNEL_VER		"0.1 (180819)"
+    14                              <1> 
+    15                              <1> 	; Segment and fixed lengths of different parts of MOS
+    16                              <1> 	MDA_SEG:	EQU 		0x800
+    17                              <1> 	MDA_OFF:	EQU		0x0
+    18                              <1> 	MDA_LEN:	EQU		1024
+    19                              <1> 
+    20                              <1> 	LOADER_SEG	EQU		0x800
+    21                              <1> 	LOADER_OFF:	EQU		0x100
+    22                              <1> 	LOADER_LEN:	EQU		768
+    23                              <1> 
+    24                              <1> 	MODULE0_SEG:	EQU		0x840
+    25                              <1> 	MODULE0_OFF:	EQU		0x64
+    26                              <1> 	
+    27                              <1> 	; Routines in debug.mod (accessed via INT 0x41)
+    28                              <1> 	DB_PRINTHEX			EQU 0
+    29                              <1> 	DB_PRINTSTR			EQU 1
+    30                              <1> 	DB_CLEARSCR			EQU 2
+    31                              <1> 
+    32                              <1> 	; Routines in despatcher.mod
+    33                              <1> 	DS_ADD_ROUTINE			EQU 0x30
+    34                              <1> 
+    35                              <1> %endif

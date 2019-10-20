@@ -1,0 +1,392 @@
+     1                                  ; Megha OS Loader
+     2                                  ; Loades different programs/modules into memory and calls the _init routine.
+     3                                  ; Version: 0.21 (130819)
+     4                                  ;
+     5                                  ; Initial version was 0.2
+     6                                  ;
+     7                                  ; -------------------------
+     8                                  ; Changes in Version 0.2
+     9                                  ; -------------------------
+    10                                  ; * The loader output welcome message now has a ascii art 
+    11                                  ;   (The letter capital M).
+    12                                  ;
+    13                                  ; -------------------------
+    14                                  ; Changes in Version 0.2
+    15                                  ; -------------------------
+    16                                  ; * Loads multiple files/modules mentioned in fat_files location.
+    17                                  ;
+    18                                  ; * Load location of files are calculated based on the size of the previous
+    19                                  ;   loaded file. Files are loaded right after one another, but at a 16 byte
+    20                                  ;   boundary.
+    21                                  ;
+    22                                  ; * Do not load the 'splash' bitmap file. That job is now not part of the
+    23                                  ;   loader.
+    24                                  ;
+    25                                  ; * Displays friendly messages while loading files and when error occures in
+    26                                  ;   loading files.
+    27                                  ;
+    28                                  ; * Max file size of the loader is 768 bytes. 
+    29                                  ;
+    30                                  ; * Loaded is loaded at location 0x800:0x100 which is an area shared by the MOS
+    31                                  ;   data block. After the loader is done working can control is transfered to
+    32                                  ;   the CLI, this area will be reused by the kernel.
+    33                                  ;
+    34                                  ; * Maintains a list at location 0x800:1, with each entry holding the segment
+    35                                  ;   number where each of the module is loaded. There is also at 0x800:0 a
+    36                                  ;   'count' of entries in the list.
+    37                                  ;
+    38                                  ; * Includes a file called 'mos.inc'. This file lists versions of all the
+    39                                  ;   different modiles in the operating system, and different function numbers
+    40                                  ;   that can be called via each of the software interrupts of the OS.
+    41                                  
+    42                                  	; ******************************************************
+    43                                  	; MACRO AND STRUCTURE BLOCK
+    44                                  	; ******************************************************
+    45                                  
+    46                                  	%macro printString 1
+    47                                  		push si
+    48                                  		    mov si, %1
+    49                                  		    int 0x31
+    50                                  		pop si
+    51                                  	%endmacro
+    52                                  
+    53                                  
+    54                                  	; We store the addresses of loaded programs/modules in a list at
+    55                                  	; location 0x800:0x1. 0x800:0 is used to store the number of item in 
+    56                                  	; this list.
+    57                                  	; This structure can be found in the mda.inc file
+    58                                  	%macro AddToModuleList 1
+    59                                  		push bx
+    60                                  		push ax
+    61                                  			; load the argument into a register.
+    62                                  			; This will save us from specifying a operand size.
+    63                                  			; Also makes the below code work with any kind of
+    64                                  			;argument.
+    65                                  			mov ax, %1
+    66                                  			; get the count already in memory
+    67                                  			xor bx, bx
+    68                                  			mov bl, [da_loader_module_list.count]
+    69                                  
+    70                                  			; each list item is 2 bytes long, so we multiply by 2
+    71                                  			shl bx, 1	
+    72                                  			mov [bx + da_loader_module_list.seg_start], ax
+    73                                  
+    74                                  			; Increment the count value
+    75                                  			inc byte [da_loader_module_list.count]
+    76                                  		pop ax
+    77                                  		pop bx
+    78                                  	%endmacro
+    79                                  
+    80                                  	; ******************************************************
+    81                                  	; MAIN BLOCK
+    82                                  	; ******************************************************
+    83                                  	
+    84                                  ; Loader is loaded at location 0x800:0x100
+    85                                  	ORG 0x100
+    86                                  
+    87                                  _init:
+    88                                  	; Clear the memory for storing loaded modules
+    89 00000000 C606000000              	mov [da_loader_module_list.count], byte 0
+    90                                  
+    91                                  	; Prints version information and other statup messages.
+    92                                  	printString msg_loader_welcome
+    92 00000005 56                  <1>  push si
+    92 00000006 BE[A500]            <1>  mov si, %1
+    92 00000009 CD31                <1>  int 0x31
+    92 0000000B 5E                  <1>  pop si
+    93                                  
+    94                                  	; Loads the start address of the list of files to load into 
+    95                                  	;index registers.
+    96 0000000C BE[1000]                	mov si, fat_files
+    97 0000000F BF[3600]                	mov di, friendly_filenames
+    98                                  .load_next:
+    99 00000012 803C00                  	cmp [si],byte 0
+   100 00000015 7452                    	je .load_end
+   101                                  
+   102                                  	; print the name of the file to be loadede on screen. 
+   103                                  	printString di
+   103 00000017 56                  <1>  push si
+   103 00000018 89FE                <1>  mov si, %1
+   103 0000001A CD31                <1>  int 0x31
+   103 0000001C 5E                  <1>  pop si
+   104                                  
+   105                                  	; Load the file to memory
+   106                                  	; Inputs: 
+   107                                  	; 1) File is loaded into a segment at a specific offset. These are 
+   108                                  	;    * Segment: [_init_addr + 2]
+   109                                  	;    * Offset : [_init_addr]
+   110                                  	; 2) SI register points to the filename in fat_files.
+   111                                  
+   112 0000001D A1[3400]                	mov ax, [_init_addr + 2]
+   113 00000020 8B1E[3200]              	mov bx, [_init_addr]
+   114 00000024 89F2                    	mov dx, si
+   115 00000026 CD30                    	int 0x30
+   116                                  
+   117                                  	; On successful load, AX should contain the size of the file that was
+   118                                  	; loaded. If set to zero, the file could not be loaded.
+   119 00000028 83F800                  	cmp ax, 0
+   120 0000002B 746B                    	je failed_file_not_found
+   121                                  
+   122                                  	; call the _init routine of the loaded module
+   123 0000002D 1E                      	push ds
+   124 0000002E 6A00                    		push 0		; argument count, there are none
+   125 00000030 FF1E[3200]              		    call far [_init_addr] 
+   126 00000034 83EC02                  		sub sp, 2	; adjust for the push 0
+   127 00000037 1F                      	pop ds
+   128                                  
+   129                                  	; Add to the module list
+   130                                  	AddToModuleList [_init_addr+2]
+   130 00000038 53                  <1>  push bx
+   130 00000039 50                  <1>  push ax
+   130                              <1> 
+   130                              <1> 
+   130                              <1> 
+   130                              <1> 
+   130 0000003A A1[3400]            <1>  mov ax, %1
+   130                              <1> 
+   130 0000003D 31DB                <1>  xor bx, bx
+   130 0000003F 8A1E0000            <1>  mov bl, [da_loader_module_list.count]
+   130                              <1> 
+   130                              <1> 
+   130 00000043 D1E3                <1>  shl bx, 1
+   130 00000045 894701              <1>  mov [bx + da_loader_module_list.seg_start], ax
+   130                              <1> 
+   130                              <1> 
+   130 00000048 FE060000            <1>  inc byte [da_loader_module_list.count]
+   130 0000004C 58                  <1>  pop ax
+   130 0000004D 5B                  <1>  pop bx
+   131                                  
+   132                                  	; print 'loading complete message'
+   133                                  	printString msg_file_loaded
+   133 0000004E 56                  <1>  push si
+   133 0000004F BE[7200]            <1>  mov si, %1
+   133 00000052 CD31                <1>  int 0x31
+   133 00000054 5E                  <1>  pop si
+   134                                  
+   135                                  	; calculate the next segment
+   136                                  	; seg = (size (ax) + OFFSET (_init_addr) >> 4) +1 + seg
+   137 00000055 0306[3200]              	add ax, [_init_addr]
+   138 00000059 C1E804                  	shr ax, 4
+   139 0000005C 40                      	inc ax
+   140 0000005D 0106[3400]              	add [_init_addr + 2], ax
+   141                                  	
+   142                                  	;  Progress the two index registers
+   143 00000061 83C70F                  	add di, 15		; 15 bytes per entry in friendly file names
+   144 00000064 83C60B                  	add si, 11		; 11 bytes per entry in fat_files
+   145 00000067 EBA9                    	jmp .load_next
+   146                                  .load_end:
+   147                                  	
+   148                                  	; clear the screen
+   149 00000069 BB0200                  	mov bx, GURU_CLEARSCREEN
+   150 0000006C CD41                    	int 0x41
+   151                                  
+   152                                  	; Print hello world
+   153 0000006E BB0100                  	mov bx, GURU_PRINTSTRING 
+   154 00000071 B8[9801]                	mov ax, hello
+   155 00000074 CD41                    	int 0x41
+   156                                  
+   157                                  	; print a number in hex format
+   158 00000076 BB0000                  	mov bx, GURU_PRINTHEX
+   159 00000079 B845FA                  	mov ax, 0xfa45
+   160 0000007C B91000                  	mov cx, 16
+   161 0000007F CD41                    	int 0x41
+   162                                  
+   163 00000081 BB0300                  	mov bx, GURU_HEXDUMP
+   164 00000084 31C0                    	xor ax, ax
+   165 00000086 BA0000                  	mov dx, 0x0
+   166 00000089 B94000                  	mov cx, 0x40
+   167 0000008C CD41                    	int 0x41
+   168                                  
+   169 0000008E BB3000                  	mov bx, DS_ADD_ROUTINE
+   170 00000091 B8FF00                  	mov ax, 0xFF
+   171 00000094 CD40                    	int 0x40
+   172                                  
+   173                                  	;mov bx, GURU_CLEARSCREEN
+   174                                  	;int 0x41
+   175                                  
+   176                                  	;mov ax, dummy_str
+   177                                  	;mov bx, GURU_PRINTSTRING
+   178                                  	;int 0x41
+   179                                  	
+   180                                  
+   181 00000096 EB07                    	jmp exit
+   182                                  
+   183                                  failed_file_not_found:
+   184                                  	printString msg_file_not_found
+   184 00000098 56                  <1>  push si
+   184 00000099 BE[7A00]            <1>  mov si, %1
+   184 0000009C CD31                <1>  int 0x31
+   184 0000009E 5E                  <1>  pop si
+   185                                  exit:
+   186 0000009F EBFE                    	jmp $
+   187                                  
+   188                                  ; ================ Included files =====================
+   189                                  section .data
+   190                                  
+   191                                  %include "../include/mos.inc"
+     1                              <1> ; Main include file for kernel, driver and application developers.
+     2                              <1> ; It includes the function numbers for all interrupts in the MOS kernel.
+     3                              <1> ; It also includes some version information of various files in this release of
+     4                              <1> ; the MOS Operating System.
+     5                              <1> 
+     6                              <1> %ifndef __MOS_INC__
+     7                              <1> 	%define __MOS_INC__
+     8                              <1> 
+     9                              <1> 	; Version informations
+    10                              <1> 	%define 	MOS_VER 		"0.1  (110819)"
+    11                              <1> 	%define 	BOOTLOADER_VER 	"0.32 (110819)"
+    12                              <1> 	%define 	LOADER_VER		"0.21  (130819)"
+    13                              <1> 	%define		DEBUG_DRV_VER	"0.1  (100819)"
+    14                              <1> 	%define		KERNEL_VER		"0.1 (180819)"
+    15                              <1> 
+    16                              <1> 	; Settings: -
+    17                              <1> 		; Colors and look and feel
+    18                              <1> 			DEFAULT_TEXT_COLOR:		EQU	0xF		; WHITE
+    19                              <1> 
+    20                              <1> 		; String Comparison
+    21                              <1> 		MATCH_CASE_INSENSITIVE: 	EQU 0
+    22                              <1> 		MATCH_CASE_SENSITIVE: 		EQU 1
+    23                              <1> 		STRING_MATCH: 				EQU MATCH_CASE_INSENSITIVE
+    24                              <1> 
+    25                              <1> 	; Segment and fixed lengths of different parts of MOS
+    26                              <1> 	MDA_SEG:		EQU 	0x800
+    27                              <1> 	MDA_OFF:		EQU		0x0
+    28                              <1> 	MDA_LEN:		EQU		1024
+    29                              <1> 
+    30                              <1> 	LOADER_SEG		EQU		0x800
+    31                              <1> 	LOADER_OFF:		EQU		0x100
+    32                              <1> 	LOADER_LEN:		EQU		768
+    33                              <1> 
+    34                              <1> 	MODULE0_SEG:	EQU		0x840
+    35                              <1> 	MODULE0_OFF:	EQU		0x64
+    36                              <1> 	
+    37                              <1> 	; Routines in guru.mod (accessed via INT 0x41)
+    38                              <1> 	GURU_PRINTHEX			EQU 0
+    39                              <1> 	GURU_PRINTSTRING		EQU 1
+    40                              <1> 	GURU_CLEARSCREEN		EQU 2
+    41                              <1> 	GURU_HEXDUMP			EQU 3
+    42                              <1> 
+    43                              <1> 	; Routines in despatcher.mod (accessed via INT 0x40)
+    44                              <1> 	DS_ADD_ROUTINE			EQU 0x30
+    45                              <1> 
+    46                              <1> 	; Routines in vfs.mod (accessed via INT 0x40)
+    47                              <1> 	VFS_OPEN				EQU 0xA
+    48                              <1> 	VFS_CLOSE				EQU 0xB
+    49                              <1> 	VFS_MOUNT				EQU 0xC
+    50                              <1> 	VFS_UMOUNT				EQU 0xD
+    51                              <1> 	VFS_REGISTER_FS			EQU 0xE
+    52                              <1> %endif
+   192                                  %include "../include/mda.inc"
+     1                              <1> ; Megha Operating System (MOS) Data Area Maps
+     2                              <1> 
+     3                              <1> %ifndef __MDA_INC_
+     4                              <1> 	%define __MDA_INC_
+     5                              <1> 
+     6                              <1> 	; We store the addresses of loaded programs/modules in a list at
+     7                              <1> 	; location 0x800:0x1. 0x800:0 is used to store the number of item in 
+     8                              <1> 	; this list.
+     9                              <1> 
+    10                              <1> 	MAX_LOADER_MODULES:	EQU	10
+    11                              <1> 
+    12                              <1> 	struc da_loader_module_list 
+    13 00000000 <res 00000001>      <1> 	    .count     resb 1
+    14 00000001 <res 00000002>      <1> 	    .seg_start resw 1
+    15                              <1> 	endstruc
+    16                              <1> 
+    17                              <1> 	
+    18                              <1> 	; Despatcher stores routines in this list. It starts from 0x800:21.
+    19                              <1> 	; Each of the item has an offset and segment of the subroutine.
+    20                              <1> 	; A subroutine can be called by putting routine number in BX and
+    21                              <1> 	; calling INT 0x41
+    22                              <1> 	
+    23                              <1> 	DS_MAX_ITEMS:	EQU	50
+    24                              <1> 	
+    25                              <1> 	struc da_desp_routine_list_item, 21
+    26 00000015 <res 00000002>      <1> 		.offset_start resw 1
+    27 00000017 <res 00000002>      <1> 		.seg_start    resw 1
+    28                              <1> 	endstruc
+    29                              <1> 
+    30                              <1> %endif
+   193                                  
+   194 00000000 41726A6F62204D756B-     dummy_str: db 'Arjob Mukherjee',0
+   194 00000009 6865726A656500     
+   195                                  ; ================ Data for loader =====================
+   196 00000010 47555255202020204D-     fat_files:   db 'GURU    MOD'
+   196 00000019 4F44               
+   197 0000001B 44455350434852204D-     	     db 'DESPCHR MOD'
+   197 00000024 4F44               
+   198 00000026 4B45524E454C20204D-     	     db 'KERNEL  MOD'
+   198 0000002F 4F44               
+   199                                               ;db 'IO      DRV'
+   200 00000031 00                                   db 0
+   201                                  
+   202 00000032 6400                    _init_addr: dw 	 0x64
+   203 00000034 4008                                dw   0x840 ;MODULE0_SEG
+   204                                  
+   205                                  ; ================ Text messages =======================
+   206 00000036 0A0D20677572752E6D-     friendly_filenames: db 10,13," guru.mod...",0
+   206 0000003F 6F642E2E2E00       
+   207 00000045 0A0D20646573706368-     		    db 10,13," despchr.mod",0
+   207 0000004E 722E6D6F6400       
+   208 00000054 0A0D206B65726E656C-     		    db 10,13," kernel.mod.",0
+   208 0000005D 2E6D6F642E00       
+   209 00000063 0A0D20696F2E647276-     		    db 10,13," io.drv.....",0
+   209 0000006C 2E2E2E2E2E00       
+   210                                  
+   211 00000072 202020446F6E6500        msg_file_loaded:    db "   Done",0
+   212 0000007A 2020204E6F7420666F-     msg_file_not_found: db "   Not found",0
+   212 00000083 756E6400           
+   213 00000087 43616E6E6F7420636F-     fatal_error:	    db "Cannot continue. Fatal error.",0
+   213 00000090 6E74696E75652E2046-
+   213 00000099 6174616C206572726F-
+   213 000000A2 722E00             
+   214                                  
+   215                                  ;msg_loader_welcome: db "Megha Operating System (MOS) ", MOS_VER,10,13
+   216                                  		    ;db "MOS Loader ", LOADER_VER, 10,13,0
+   217                                  
+   218 000000A5 0A0D0A0D                msg_loader_welcome: db 10,13,10,13
+   219 000000A9 202323232320202020-     		    db ' ####      ####  ',10,13
+   219 000000B2 20202323232320200A-
+   219 000000BB 0D                 
+   220 000000BC 202323202323202020-     		    db ' ## ##    ## ##  ','Megha Operating System (MOS)',10,13
+   220 000000C5 20232320232320204D-
+   220 000000CE 65676861204F706572-
+   220 000000D7 6174696E6720537973-
+   220 000000E0 74656D20284D4F5329-
+   220 000000E9 0A0D               
+   221 000000EB 202323202023232020-     		    db ' ##  ##  ##  ##  ','Version:',MOS_VER,10,13         
+   221 000000F4 232320202323202056-
+   221 000000FD 657273696F6E3A302E-
+   221 00000106 312020283131303831-
+   221 0000010F 39290A0D           
+   222 00000113 202323202020232323-     		    db ' ##   ####   ##  ','MOS Loader ', LOADER_VER, 10,13
+   222 0000011C 23202020232320204D-
+   222 00000125 4F53204C6F61646572-
+   222 0000012E 20302E323120202831-
+   222 00000137 3330383139290A0D   
+   223 0000013F 202323202020202323-     		    db ' ##    ##    ##  ',10,13
+   223 00000148 20202020232320200A-
+   223 00000151 0D                 
+   224 00000152 202D2D2D2D2D2D2D2D-     		    db ' ----------------------------------------------'
+   224 0000015B 2D2D2D2D2D2D2D2D2D-
+   224 00000164 2D2D2D2D2D2D2D2D2D-
+   224 0000016D 2D2D2D2D2D2D2D2D2D-
+   224 00000176 2D2D2D2D2D2D2D2D2D-
+   224 0000017F 2D2D               
+   225 00000181 0A0D204C6F6164696E-     		    db 10,13,' Loading modules..',10,13,0
+   225 0000018A 67206D6F64756C6573-
+   225 00000193 2E2E0A0D00         
+   226                                  
+   227 00000198 53686F77696E672074-     hello: db "Showing this message using a debug.mod routine.",13,10
+   227 000001A1 686973206D65737361-
+   227 000001AA 6765207573696E6720-
+   227 000001B3 612064656275672E6D-
+   227 000001BC 6F6420726F7574696E-
+   227 000001C5 652E0D0A           
+   228 000001C9 526573756C743A2030-            db "Result: 0x",0
+   228 000001D2 7800               
+   229                                  ; ================ ZERO PADDING =======================
+   230 000001D4 00<rept>                times 768 - ($ - $$) db 0
+   231                                  
+   232                                  
+   233                                  

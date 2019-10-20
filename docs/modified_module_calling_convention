@@ -1,0 +1,82 @@
+
+
+Advantages of making DS = data segment of the caller
+					 ES = data segment of the callee
+
+1. Most of the routines in an operating system will work with data segment from
+the caller. If the caller sends in a pointer to the routine, the called routine
+can just access the data with the provided offset. No extra work is needed. No
+need to change segments etc.
+
+This can come handy when accessing the caller data using various string
+instructions in x86. The souce is mostly will be caller data and in the x86
+instruction set, DS:SI sould point to the source and ES:DI points to the
+destination.
+
+Keeping DS = data segment of the caller keeps things simple and no extra work
+is needed in swapping DS with ES (if ES holds the caller data segment instead.)
+
+------------------------------------------------------------------------------
+However the simple model specified above works on the below mentioned special
+case (case 1). Case 2 requires switching data segments, DS = data segment
+used by Sys call B. Case 3 also requires DS = 0x8000, before calling sys call
+B.
+
+Following are the various data sources that we need to take into consideration.
+1.	[Prog A] --> [sys call B: Prog A Data]
+2.  [Prog A] --> [sys call B] --> [sys call C: sys call B data]  
+3.	[Prog A] --> [sys call B: 0x8000]      
+
+The proposal is that the despatcher will do the switching if we ask it to. We
+will pass the source parameter in stack before calling the despatcher software
+interrupt.
+
+At the end of the system call, the despatcher will restore the DS register to
+that is was before the call.
+
+Example:
+Case 1:
+
+	func_a(char *b){
+		// func_a: It is a fictitious system call, that amoung many things,
+		// makes string b to lower case. As string b can lie in another segment
+		// (however, only offset is provided) we ask the despatcher to make 
+		// DS = as set by the caller of the func_a call. Thus DS_CALLER makes
+		// no change to the DS register.
+
+		mov bx, 1
+		mov ax, b
+		push DS_CALLER
+		int 0x41
+	}
+
+Case 2:
+
+	func_a(char *b){
+		// func_a: It is a fictitious system call, that amoung many things,
+		// makes string name to lower case. As the string can lie in same 
+		// segment we ask the despatcher to make DS = code segment of self.
+		char name[] = "Arjob";
+
+		mov bx, 1
+		mov ax, name
+		push DS_SELF	// despatcher will get the code segment from the return
+						// address in the stack.
+		int 0x41
+	}
+
+Case 3:
+	func_a(char *b){
+		// func_a: It is a fictitious system call, that amoung many things,
+		// makes string name to lower case. As the string lies in another
+		// segment we ask the despatcher to make DS = 0x800 (Explicitely)
+		
+		OS_NAME_OFFSET: EQU 10
+		OS_NAME_SEG:	EQU 0x800
+
+		mov bx, 1
+		mov ax, OS_NAME_OFFSET
+		push DS_EXPLICIT
+		push OS_NAME_SEG
+		int 0x41
+	}

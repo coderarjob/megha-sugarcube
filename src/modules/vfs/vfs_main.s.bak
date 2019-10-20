@@ -1,0 +1,48 @@
+
+; ============ [ CODE BLOCK ] =========
+; Every module in MOS starts at location 0x64. The below 100 bytes, from 0x0 to
+; 0x63 is for the future use.
+	ORG 0x100
+;
+; The first routine in any module is the _init routine. This can be as simple
+; as a retf statement or can actually be used for something importaint.
+_init:
+	mov ax, foofs
+	call register_fs
+
+	mov ax, fsfile
+	mov cx, fsname
+	mov dx, drivename
+	call mount
+
+	mov ax, fsfile1
+	mov cx, fsname1
+	mov dx, drivename1
+	call mount
+
+	mov ax, drivename1
+	call get_mount_point_from_drive
+
+	mov ax, drivename
+	call umount
+
+	mov ax, drivename1
+	call get_mount_point_from_drive
+
+	mov ah, 0x4c
+	int 0x21
+
+foofs:
+	istruc filesystem 
+		at filesystem.fsname, db 'foofs',0
+		at filesystem.diro, dd 0xaabbccdd
+		at filesystem.fo, dd 0x01020304
+	iend 
+
+fsname1: db 'foofs',0
+fsfile1: times file_size db '2'
+drivename1: db 'c:',0
+
+fsname: db 'foofs',0
+fsfile: times file_size db '1'
+drivename: db 'd:',0

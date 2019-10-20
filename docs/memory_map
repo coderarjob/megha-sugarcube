@@ -1,0 +1,60 @@
+MEMORY MODEL OF MEGHA OPERATING SYSTEM
+------------------------------------------------------------
+
+The OS Kernel would itself be loaded in a single segment, but can call drivers 
+loaded in different segment. The system calls of the OS can only be accessed by 
+the INT instruction.
+
+All of the segment registers is preserved during system calls.
+If any system call procedure needs to access local table/data it can change DS
+register, but must be restored back.
+
+All of the general purpose registers is also preserved, including SI and DI.
+
+			Memory location		Size	  End location
+			-------------------------------------------
+IVT			0					1024		3FF
+			-------------------------------------------
+BDA			400                 256			4FF
+			-------------------------------------------
+*Free		500					~29KB		7BFF
+			-------------------------------------------
+Bootloader	7C00				512			7DFF
+			-------------------------------------------
+Free		7E00				609			9FBFF
+			-------------------------------------------
+**EBDA		9FC00				1K			9FFFF
+			-------------------------------------------
+VGA			A0000				96KB		B7FFF
+			-------------------------------------------
+VGA Text	B8000				32KB		BFFFF
+
+*  In my laptop the stack is at 0x6B0:0xFF2 at the beginning of the bootloader.
+   So I do not know if 500 and above is free or not.
+
+** The start location of EBDA can be found by reading the 0x40:0xE location.
+
+			Segment Number		Offset		Size
+			-------------------------------------------
+Stack		0x6C0				FFF			4096
+			-------------------------------------------
+Bootloader	0x000				0x7C00		512
+			-------------------------------------------
+Buffer for
+Bootloader	0x000				0x7E00		512
+			------------------------------------------- <---+
+			MOS Data Block Starts at 0x800:000              |
+			-------------------------------------------     |
+MOS 		0x800				0x0000		256             |
+Initial data                                                |
+Block 														|
+			-------------------------------------------     |
+Loader		0x800				0x0100		L ( L < 786)    | 1Kb
+			-------------------------------------------     |
+			MOS Data Block Ends at 0x3FF					|
+			------------------------------------------- <---+
+debug.drv	0x800				0x400		X
+			-------------------------------------------
+kernel  	0x800			    0x400+X	    Y
+			-------------------------------------------
+Driver A	0x800			    0x400+X+Y    ...

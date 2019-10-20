@@ -1,0 +1,78 @@
+CYLINDER SECTOR HEAD ADDRESSING
+-------------------------------
+
+Logical sectors are numbers that start from 0 and are used to address uniform
+blocks (usually made up of fixed 512 bytes). Using these logical sectiors, we
+can address whole of the disk and every block that makes up the disk.
+
+Howerver, this logical blocks cannot be used in bios system calls - we convert 
+these logical block numbers to another form of address, that uses cylinder,
+sector and head for addressing.
+
+Following will discuss the procedure to convert logical addressing to CSH
+addressing.
+
+Information:
+------------
+A disk have platers (each with two or one head) each having tracks and each of
+the tracks have some sectors in it. 
+These sectors (just blocks of bytes) are addressed using numbers starting 
+from 1.  Every track have the same number of sectors. On a floppy 
+1440Kb floppy, there are 18 sectors per track, and each of the sector is a 
+block of 512 bytes. 
+
+An importaint thing to note that in 1440Kb floppy with two heads, the odd and
+even tracks are places alternatively on both sides, and one head read all the
+even and another reads all the even tracks. This is done to minimise the head
+movement.
+
+For example:
+
+Track 0 is read by the head 0, and track 1 using head 1, track 2 using track 0
+and so on.
+
+PROCEDURE CSH:
+		  INPUT:	Logical address A
+		  OUTPUT: 	SECTOR	 S
+					CYLINDER C
+					Head	 H
+
+	; calculate the track number
+		Q = A / SECTORS_PER_TRACK
+		C = Q / HEAD_COUNT
+
+	; calculate the sector number
+		S = A % SECTORS_PER_TRACK
+		S = S + 1					; Sector number starts from 1
+
+	; calculate head
+		H = Q % HEAD_COUNT
+
+END PROCEDURE
+
+At the end of this procedure, we can ask Head H to go to cylinder C and read
+sector S on that cylinder. The concept of cylinder and head makes the use of
+platter number while addressing redundent.
+
+SECTIORS PER TRACK
+------------------
+First comes the geometry of the disk. In case of the 1440KB floppy, following
+describes the geometry.
+
+	* Number of sides per plater      : 2
+	* Number of platter               : 1
+	* Total number of heads           : 2 (2 heads * 1 platter)
+	* Tracks per side of each platter : 80
+	* Total bytes                     : 1440 KB
+
+Now we calculate the following with the information given,
+
+	* Bytes per sector                : 512
+	* Total number of sectors         : 1440 KB / 512 = 2880 sectors
+	* Total number of Tracks          : 80 tracks / side * 2 side * 1 platter 
+	                                    = 160 tracks
+
+	* Sectors per track               : 2880 sectors / 160 tracks 
+	                                    = 18 sectors/track
+
+

@@ -1,0 +1,192 @@
+Theis document will answer how and who will load a process into memory and also
+discusses the structure of various drivers in the system.
+
+---------------------------------------------------------------------------
+Why multi-segment?
+---------------------------------------------------------------------------
+Can't we load all the driver files right after the 'loader', all in one segment
+0x800? So only the offset will change and the CS, DS etc all remain the same
+across drivers, kernel and the loader.
+
+If every program is loaded at an unknown offset (can only be determined at the
+load time), then it will become impossible for the programmer to know the
+location of a memory location during development and thus cannot give a value
+to the ORG directive during development.
+
+Think of multi-segment operation as a solution to the addressing problem. The
+loader will load appropriate value in the CS and DS registers, while the
+drivers get uploaded at a fixed offset in that segmnet.
+
+---------------------------------------------------------------------------
+Standard system call would look something like this:
+---------------------------------------------------------------------------
+The OS will have to assume the LONG mode of operation, because SMALL mode is a
+special case of the LONG mode. The drivers and the kernel itself will all work
+with long mode - So writing parts in C would be difficult.
+
+Note:
+* LONG mode means CS = DS <> SS. 
+* SMALL mode means CS = DS = SS. DS must always be same as CS.
+
+System language arguments:
+	Arguments of a system call is passed via registers.
+
+    ------------------------------------------
+	1. Application program:
+    ------------------------------------------
+	   ; We can call any OS system call, and not need to mention the DS
+	   ; explicitly. It will be handled by the OS.	
+		MOV BX, OPEN
+		MOV AX, filename
+		INT 0x40		
+	
+	filename: DB 'diary.txt',0
+	OPEN: EQU 0x1
+
+    ------------------------------------------
+	2. Operating system
+    ------------------------------------------
+		; We make DS = CS (as per our convention), however we preserve it into
+		; the ES register (here in this example), and restored before 
+		; returning.
+		--------------------------------------
+		a. Dispatcher
+		--------------------------------------
+			mov es, ds
+			mov ds, cs
+			call [jumptable + 3 * bx] 	; each of the entry is 3 bytes
+			mov ds, es
+			iret
+
+		--------------------------------------
+		b. Jump table
+		--------------------------------------
+			jmp near open_file
+
+		--------------------------------------
+		c. 'open_file' function
+		--------------------------------------
+			; When calling driver method, the application DS must be provided
+			; explicitly (here pushed to stack.)
+			; Note that the stack is the same as the application program, as it
+			; was never changed.
+			open_file:
+				call isspecialfile				
+				je	open_special_file
+
+				; Arguments for the OPEN function
+				push es
+				push bx		
+				push cx
+				call [settings + DEFAULT_FILE_SYSTEM + OPEN_METHOD]
+				ret 		; return value from the driver is in BX register.
+    ------------------------------------------
+	3. File system driver
+    ------------------------------------------
+	   ; The stack will have the arguments, and points will come with the
+	   ; segment registers as well. ES register is not assumed to have the
+	   ; value of application program DS, in the driver relm.
+	   ; The driver need to change the DS, as it was already changed by the OS
+	   ; in the dispatcher.
+		open:
+			call findfile
+			call openfile
+			ret
+----------------------------------------------------------------------
+Loading of drivers by the laoder:
+----------------------------------------------------------------------
+	; call to the _init method of a loaded driver program.
+	; It is assumed that the data segemnt switching is already done.
+
+	lea ax, [position + _START_OFFSET]	; For DOS _START_OFFSET is 0x100
+										; Ours will be 0x64
+	mov [Proc_Addr], ax
+	mov [Proc_Addr + 2], seg
+
+	push argument_n
+	push argument_n-1
+	push n
+	call far [Proc_Addr]
+
+	Proc_Addr: dw   0x64 ; for offset (this will be a constant, read below)
+			   resw 1    ; for segment
+
+	; The '_START_OFFSET' constant - every program will be 
+	; loaded at a fixed offset and the _init function must start from the first
+	; instruction in the program. Thus _init is at offset 0 in the process.
+
+	; As SS <> DS not all C compilers can be used to build drivers.
+	; But if it be done, the decleration for _init would look like this.
+	void _init(int16 argument_count, int16 arguments[]);
+
+	However C do not have any syntax to do a far call, we cannot write an
+	quivallent C code without using the inline assembly.
+
+	void (*init_ptr)(int8,int16*);
+	init_ptr = (void (*)(int8, int16*))(driver_address + _START_OFFSET);
+	init_ptr(1,offset);
+
+	; In the above code, 'driver_address' is the offset at which driver is
+	; loaded, and _START_OFFSET is the fixed offset at which the entry point 
+	; _init is supposed to be in the program.
+
+Why is the meaning of the values passed to the program?
+	The arguments are pushed on to the stack with the last element pushed
+	should be the count of the arguments that were pushed. What meaning the
+	arguments hold will depend on the program. Normally drivers will not need
+	any arguments to be passed to it. But it is there.
+	As you can imagine this model will also work with application programs to
+	pass startup parametes in the stack.
+
+---------------------------------------------------------------------------
+General pseudocode for loading programs and executing the _init function:
+---------------------------------------------------------------------------
+
+	char *programs_to_load[] =
+	{"debug.drv","mos","kdb.drv","con.drv","kdb.drv", NULL};
+
+	int seg = 0x840;
+	int OFFSET = 0x64;
+	for(int i = 0; 
+				(filename = programs_to_load[i]) != NULL; i++)
+	{	
+		size = laodfile(seg,OFFSET);
+#asm
+		.text
+
+		; backup DS in Stack
+		push ds
+		mov ds, _seg;
+
+		; call the _init function
+		push 0		; argument count
+
+		mov [_init_addr+2], _seg;
+		call far [_init_addr]
+
+		; restore DS
+		sub sp, 2
+		pop ds
+
+		.data
+		_init_addr: dw   0x64	; offset of method _init in its code segment
+					resw 1		; segment
+		.text
+#endasm
+	
+		; calculate new segment address
+		seg = ((size + OFFSET) >> 4) + 1 + seg;
+	}
+	
+Instead of an _init function at a fixed offset, we can start the program
+from the top (at whatever offset the process is loaded at). And if the
+program is a driver, an initializing routine is what will be first. If the
+driver needs nothing to initialize, the first instruction will be a RETF.
+(Far return is needed because we must return to the loader, and it is in a
+different segment.)
+
+This would help in having a consistent layout for application programs as
+well as drivers.
+
+The only difference is that drivers will always run in LARGE mode (DS <>
+SS), while application can optionally run in SMALL mode (DS = SS).

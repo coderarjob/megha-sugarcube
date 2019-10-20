@@ -1,0 +1,1176 @@
+     1                                  ; A very basic implementation of the VIRTUAL FILE SYSTEM for MOS.
+     2                                  ; The responsibilities of the VFS is to keep track of the various mounted
+     3                                  ; filesystems and their mount points. It also should provide routines to
+     4                                  ; register new file system and mount/unmount operations.
+     5                                  ;
+     6                                  ; The primary funtion of a VFS is to be able to access files no matter which 
+     7                                  ; file system it is in. Thus VFS allows installable file systems that can be 
+     8                                  ; added or removed as needed. 
+     9                                  ;
+    10                                  ; Initial version: 2092019 (2nd September 2019)
+    11                                  ;
+    12                                  ; --------------------------------------------------------------------------
+    13                                  ; Public methods via despatcher:
+    14                                  ; --------------------------------------------------------------------------
+    15                                  ;   * void register_fs(struct filesystem* newfs);
+    16                                  ;   * void mount(struct file *source, char *fsname, char *drive);
+    17                                  ;   * int unmount(char *drive);
+    18                                  ;   * struct filesystem *init_vfs();
+    19                                  ;
+    20                                  ; --------------------------------------------------------------------------
+    21                                  ; Structures:
+    22                                  ; --------------------------------------------------------------------------
+    23                                  ; The mount_point structure keeps track of the mount points in the system
+    24                                  ; currently installed. This structure binds the file system (thus its
+    25                                  ; operations) with the mounted file. Any particular mount point is identified
+    26                                  ; by the drive name (can by at max 10 bytes long, including the 
+    27                                  ; null terminator byte)
+    28                                  ;
+    29                                  ; struct mount_point
+    30                                  ; {
+    31                                  ; 	struct filesystem *fs;	
+    32                                  ; 	struct file source_f;
+    33                                  ; 	char mount_point[10];
+    34                                  ; }
+    35                                  ; --------------------------------------------------------------------------
+    36                                  ; The file system structure is used internally by the VFS to keep the
+    37                                  ; filesystem operations and its name together. The name of the file system is
+    38                                  ; used by the mount routine to retrive the filesystem operations.
+    39                                  ; This structure exposes the operations to the outside world via the 
+    40                                  ; mount_point structure.  
+    41                                  ;
+    42                                  ; struct filesystem
+    43                                  ; {
+    44                                  ; 	char fsname[10];
+    45                                  ; 	struct filesystem_operations fso;
+    46                                  ; }
+    47                                  ; --------------------------------------------------------------------------
+    48                                  ; This structure is again used internally by the VFS, and holds the two
+    49                                  ; operations implemented by any file system together.
+    50                                  
+    51                                  ; struct filesystem_operations
+    52                                  ; {
+    53                                  ; 	struct dir_operations *diro;
+    54                                  ; 	struct file_operations *fo;
+    55                                  ; }
+    56                                  ; --------------------------------------------------------------------------
+    57                                  ; The members of this structure points to the respective routines in any
+    58                                  ; filesystem. An instance of this structure along with the dir_operations is
+    59                                  ; what gets registered in the VFS.
+    60                                  ; The file_operations and dir_operations is what allows to add filesystems and
+    61                                  ; access it.
+    62                                  ; Every routine may not be initialised by every file system. However, open and
+    63                                  ; close always need to be implemented.
+    64                                  ; struct file_operations
+    65                                  ; {
+    66                                  ; 	struct file *(*open)(struct file*, char *filename, int flags);
+    67                                  ; 	int (*read)(struct file*, char *buffer, int size);
+    68                                  ; 	int (*write)(struct file*, char *buffer, int size);
+    69                                  ; 	int (*close)(struct file*);
+    70                                  ; 	struct file_attributes (*get_attr)(struct file*);
+    71                                  ; 	int (*set_attr)(struct file*,struct file_attributes*);
+    72                                  ; }
+    73                                  ;
+    74                                  ; struct dir_operations
+    75                                  ; {
+    76                                  ;	int (*create)(...);
+    77                                  ;	int (*delete)(...);
+    78                                  ;	struct file *(*open)(struct file *mounted_f, char *foldername, int flags);
+    79                                  ; 	int (*close)(struct file*);
+    80                                  ;	struct folder_attributes (*get_attr)(...);
+    81                                  ;	int (*get_attr)(struct folder_attributes*,...);
+    82                                  ; }
+    83                                  ;
+    84                                  ; --------------------------------------------------------------------------
+    85                                  ; This is the one of the main structures that define any opened file (be that
+    86                                  ; be a DEVICE file or a DIRECTORY), and also links to the base (mounted
+    87                                  ; file / device driver) that lies below, thus forming a linked list.
+    88                                  ; In many ways this structure is what keeps track of the nested file systems and
+    89                                  ; their file and directory operations together with the file and directory they
+    90                                  ; perform on. 
+    91                                  ; For example:
+    92                                  ; Say we mount C:\Images file to D drive using the FAT16 filesystem. The C
+    93                                  ; drive is the mount point for the floppy0 file using the FAT12 filesystem. The
+    94                                  ; floppy0 file resides in the drive for the devfs (say E drive).
+    95                                  ; So the instance of the file structure for a file in the D drive would have
+    96                                  ; the fillowing topology.
+    97                                  ;                           d:\selfie.png -----> D drive handled by FAT16 
+    98                                  ;                                  |
+    99                                  ;								   v
+   100                                  ;							  c:\images    -----> C drive handled by FAT12
+   101                                  ;                                  |
+   102                                  ;							       v
+   103                                  ;							  e:\floppy0   -----> E drive handled by devfs
+   104                                  ;                                  |
+   105                                  ;							       v
+   106                                  ;								floppy0    -----> Indentified by its major and
+   107                                  ;												  minor numbers and handled 
+   108                                  ; 												  by the floppy driver.
+   109                                  ;
+   110                                  ; ------------|----------------|-------------|-----------------|-----------------------|---------------------|
+   111                                  ; File/Device	 File system	 mount point	 base.file		    base.device		 	   file_operations
+   112                                  ; ------------|----------------|-------------|-----------------|-----------------------|---------------------|
+   113                                  ;   floppy0           -               -               -           DEVICE(major, minor)    floppy driver
+   114                                  ; ------------|----------------|-------------|-----------------|-----------------------|---------------------|
+   115                                  ; The file system DEVFS is mounted in th E drive.
+   116                                  ; ------------|----------------|-------------|-----------------|-----------------------|---------------------|
+   117                                  ; e:/floppy0        FAT12             C        floppy0 device              -                   FAT12
+   118                                  ;                                              file
+   119                                  ; ------------|----------------|-------------|-----------------|-----------------------|---------------------|
+   120                                  ; c:/Images         FAT16             D        e:\floppy0                  -                   FAT16
+   121                                  ; ------------|----------------|-------------|-----------------|-----------------------|---------------------|
+   122                                  
+   123                                  ; The structure can be read this way:
+   124                                  ;  - File/Directory/Device with name in 'filename' can be read (other operations
+   125                                  ;    as well) using the function pointers in ops.fo (or ops.diro if file
+   126                                  ;    represents a drectory) members. 
+   127                                  ;  - If this file resides in a mounted drive whose parent file is base.file.
+   128                                  ; The base union points to either a file or a device file from which the file
+   129                                  ; structure is derived.
+   130                                  ; 
+   131                                  ; If the file points to a device driver, the base.device has the device 
+   132                                  ; identity (MAJOR and MINOR) numbers.
+   133                                  ;
+   134                                  ;struct file
+   135                                  ;{
+   136                                  ;	file_t type;
+   137                                  ;	node_t ntype;
+   138                                  ;	char filename[11];
+   139                                  ;	union{
+   140                                  ;		device_t device;
+   141                                  ;		struct file file;
+   142                                  ;	} base;
+   143                                  ;	union {
+   144                                  ;		struct file_operations fo;
+   145                                  ;		struct dir_operations diro;
+   146                                  ;	} ops;
+   147                                  ;	char extra[20];
+   148                                  ;}
+   149                                  ; --------------------------------------------------------------------------
+   150                                  ; Type definations:
+   151                                  ; --------------------------------------------------------------------------
+   152                                  ; typedef enum {DEVICE, FILESYSTEM} file_t
+   153                                  ; typedef enum {NORMAL, DIRECTORY, PIPE} node_t
+   154                                  ; typedef int16 device_t;
+   155                                  ; --------------------------------------------------------------------------
+   156                                  ; Helpful macros:
+   157                                  ; --------------------------------------------------------------------------
+   158                                  ; MAKDEV(major, minor) ((major) << 8) | (minor))
+   159                                  ; MINOR(d) ((d) & 0xFF)
+   160                                  ; MAJOR(d) (((d) >> 8) & 0xFF)
+   161                                  ;
+   162                                  ; =============== [ INCLUDE FLIES ] ===================
+   163                                  ; The order of the below included files are not importaint expect for 
+   164                                  ; 1. The VFS.INC. This file must be included before vfs_main.s; to be able 
+   165                                  ;     to create an instance of a structure, it must be defined first.
+   166                                  ; 2. vfs_main.s file has the _init method, and thus must always be included
+   167                                  ;    before any .S file.
+   168                                  
+   169                                  %include "../../include/vfs.inc"
+     1                              <1> 
+     2                              <1> %ifndef __VFS_INC_
+     3                              <1> 	%define __VFS_INC_
+     4                              <1> 
+     5                              <1> 	; Flags that control few aspects of the VFS
+     6                              <1> 
+     7                              <1> 	; MAX values
+     8                              <1> 	FILESYSTEM_NAME_MAX_LENGTH: equ 10
+     9                              <1> 	MAX_REGISTERED_FILESYSTEM: equ 10
+    10                              <1> 	
+    11                              <1> 	MAX_DRIVE_NAME_LENGHT: equ 10
+    12                              <1> 	MAX_MOUNT_POINT_COUNT: equ 10
+    13                              <1> 	MAX_OPEN_FILES_COUNT: equ 10
+    14                              <1> 
+    15                              <1> 	; file_t typedef
+    16                              <1> 	FT_DEVICE: EQU 0
+    17                              <1> 	FT_FILESYSTEM: EQU 1
+    18                              <1> 
+    19                              <1> 	; node_t typedef
+    20                              <1> 	NT_NORMAL: EQU 0
+    21                              <1> 	NT_DIRECTORY: EQU 1
+    22                              <1> 	NT_PIPE: EQU 2
+    23                              <1> 
+    24                              <1> 	; file structure flags
+    25                              <1> 	FILE_OPEN_BIT		EQU 0		; OPEN 1, CLOSE 0
+    26                              <1> 	
+    27                              <1> 	; All the pointers (memory locations) need to be far pointers in the
+    28                              <1> 	; 'mount_point' and 'filesystem' structures, as these structures either
+    29                              <1> 	; supply data from or to outside the VFS module.
+    30                              <1> 	struc mount_point
+    31 00000000 <res 00000004>      <1> 		.filesystem resd 1	; struct filesystem *fs (far pointer)
+    32 00000004 <res 00000004>      <1> 		.source_file resd 1  ; struct file *source_f
+    33 00000008 <res 0000000A>      <1> 		.mount_name resb MAX_DRIVE_NAME_LENGHT
+    34                              <1> 	endstruc
+    35                              <1> 
+    36                              <1> 	struc filesystem
+    37 00000000 <res 0000000A>      <1> 		.fsname resb FILESYSTEM_NAME_MAX_LENGTH
+    38 0000000A <res 00000004>      <1> 		.diro resd 1		; Far pointer to dir_operations
+    39 0000000E <res 00000004>      <1> 		.fo   resd 1		; Far pointer to file_operations
+    40                              <1> 	endstruc
+    41                              <1> 
+    42                              <1> 	; Helper macro to create proocedures
+    43                              <1> 	%macro PROC 1
+    44                              <1> 		%1.offset resw 1
+    45                              <1> 		%1.segmnet resw 1
+    46                              <1> 		%1 EQU %1.offset
+    47                              <1> 	%endmacro
+    48                              <1> 
+    49                              <1> 	struc file_operations
+    50                              <1> 		PROC .open  ; struct file *open(struct file*, char *filename, 
+    50 00000000 <res 00000002>      <2>  %1.offset resw 1
+    50 00000002 <res 00000002>      <2>  %1.segmnet resw 1
+    50                              <2>  %1 EQU %1.offset
+    51                              <1> 				    ; int flags);
+    52                              <1> 		PROC .create; int create(char *filename, int type, int flags)
+    52 00000004 <res 00000002>      <2>  %1.offset resw 1
+    52 00000006 <res 00000002>      <2>  %1.segmnet resw 1
+    52                              <2>  %1 EQU %1.offset
+    53                              <1> 		PROC .remove; int remove(char *filename, int flags)
+    53 00000008 <res 00000002>      <2>  %1.offset resw 1
+    53 0000000A <res 00000002>      <2>  %1.segmnet resw 1
+    53                              <2>  %1 EQU %1.offset
+    54                              <1> 		PROC .read  ; int (*read)(struct file*, char *buffer, int size);
+    54 0000000C <res 00000002>      <2>  %1.offset resw 1
+    54 0000000E <res 00000002>      <2>  %1.segmnet resw 1
+    54                              <2>  %1 EQU %1.offset
+    55                              <1> 		PROC .write ; int (*read)(struct file*, char *buffer, int size);
+    55 00000010 <res 00000002>      <2>  %1.offset resw 1
+    55 00000012 <res 00000002>      <2>  %1.segmnet resw 1
+    55                              <2>  %1 EQU %1.offset
+    56                              <1> 		PROC .close ; int (*close)(struct file*);
+    56 00000014 <res 00000002>      <2>  %1.offset resw 1
+    56 00000016 <res 00000002>      <2>  %1.segmnet resw 1
+    56                              <2>  %1 EQU %1.offset
+    57                              <1> 		PROC .seek  ; int (*seek)(struct file*, int location)
+    57 00000018 <res 00000002>      <2>  %1.offset resw 1
+    57 0000001A <res 00000002>      <2>  %1.segmnet resw 1
+    57                              <2>  %1 EQU %1.offset
+    58                              <1> 		PROC .get_attr ; struct file_attributes (*get_attr)(struct file*);
+    58 0000001C <res 00000002>      <2>  %1.offset resw 1
+    58 0000001E <res 00000002>      <2>  %1.segmnet resw 1
+    58                              <2>  %1 EQU %1.offset
+    59                              <1> 		PROC .set_attr ; int (*set_attr)(struct file*,struct file_attributes*);
+    59 00000020 <res 00000002>      <2>  %1.offset resw 1
+    59 00000022 <res 00000002>      <2>  %1.segmnet resw 1
+    59                              <2>  %1 EQU %1.offset
+    60                              <1> 	endstruc
+    61                              <1> 
+    62                              <1> 	struc file_stat
+    63 00000000 <res 00000002>      <1> 		.creation_date  resw 1
+    64 00000002 <res 00000002>      <1> 		.accessed_date	resw 1
+    65 00000004 <res 00000004>      <1> 		.size_bytes		resd 1
+    66 00000008 <res 00000002>      <1> 		.block_size		resw 1
+    67 0000000A <res 00000004>      <1> 		.current_sector	resd 1
+    68                              <1> 	endstruc
+    69                              <1> 
+    70                              <1> 	struc file
+    71 00000000 <res 00000001>      <1> 		.nflags	   resb 1		; Can be used to store flags. Multiple flags
+    72                              <1> 								; are ORed together.
+    73 00000001 <res 00000001>      <1> 		.file_type resb 1		; FT_FILESYSTEM, FT_DEVICE
+    74 00000002 <res 00000001>      <1> 		.node_type resb 1		; NT_NORMAL, NT_DIRECTORY, NT_PIPE
+    75 00000003 <res 0000000B>      <1> 		.filename resb 11		; Name of the node.
+    76                              <1> 
+    77                              <1> 		; union{ device_t device; struct file *file} base;
+    78 0000000E <res 00000002>      <1> 		.device resw 1		
+    79 00000010 <res 00000002>      <1> 		.file_high resw 1	; stores the high byte of 32 bit file pointer
+    80                              <1> 		.file equ .device
+    81                              <1> 
+    82 00000012 <res 00000004>      <1> 		.file_op resd 1					; File operations far pointer
+    83 00000016 <res 0000000E>      <1> 		.file_info resb file_stat_size	; Some information about the node and a
+    84                              <1> 										; position field to keep track of the
+    85                              <1> 										; current position in the node.
+    86                              <1> 	endstruc
+    87                              <1> 
+    88                              <1> %endif
+   170                                  %include "../../include/mos.inc"
+     1                              <1> ; Main include file for kernel, driver and application developers.
+     2                              <1> ; It includes the function numbers for all interrupts in the MOS kernel.
+     3                              <1> ; It also includes some version information of various files in this release of
+     4                              <1> ; the MOS Operating System.
+     5                              <1> 
+     6                              <1> %ifndef __MOS_INC__
+     7                              <1> 	%define __MOS_INC__
+     8                              <1> 
+     9                              <1> 	; Version informations
+    10                              <1> 	%define 	MOS_VER 		"0.1  (110819)"
+    11                              <1> 	%define 	BOOTLOADER_VER 	"0.32 (110819)"
+    12                              <1> 	%define 	LOADER_VER		"0.21  (130819)"
+    13                              <1> 	%define		DEBUG_DRV_VER	"0.1  (100819)"
+    14                              <1> 	%define		KERNEL_VER		"0.1 (180819)"
+    15                              <1> 
+    16                              <1> 	; Settings: -
+    17                              <1> 		; Colors and look and feel
+    18                              <1> 			DEFAULT_TEXT_COLOR:		EQU	0x7		; LIGHT GREY
+    19                              <1> 
+    20                              <1> 		; String Comparison
+    21                              <1> 		MATCH_CASE_INSENSITIVE: 	EQU 0
+    22                              <1> 		MATCH_CASE_SENSITIVE: 		EQU 1
+    23                              <1> 		STRING_MATCH: 				EQU MATCH_CASE_INSENSITIVE
+    24                              <1> 
+    25                              <1> 	; Segment and fixed lengths of different parts of MOS
+    26                              <1> 	MDA_SEG:		EQU 	0x800
+    27                              <1> 	MDA_OFF:		EQU		0x0
+    28                              <1> 	MDA_LEN:		EQU		1024
+    29                              <1> 
+    30                              <1> 	LOADER_SEG		EQU		0x800
+    31                              <1> 	LOADER_OFF:		EQU		0x100
+    32                              <1> 	LOADER_LEN:		EQU		768
+    33                              <1> 
+    34                              <1> 	MODULE0_SEG:	EQU		0x840
+    35                              <1> 	MODULE0_OFF:	EQU		0x64
+    36                              <1> 	
+    37                              <1> 	; Routines in guru.mod (accessed via INT 0x41)
+    38                              <1> 	GURU_PRINTHEX			EQU 0
+    39                              <1> 	GURU_PRINTSTRING		EQU 1
+    40                              <1> 	GURU_CLEARSCREEN		EQU 2
+    41                              <1> 	GURU_HEXDUMP			EQU 3
+    42                              <1> 
+    43                              <1> 	; Routines in despatcher.mod (accessed via INT 0x40)
+    44                              <1> 	DS_ADD_ROUTINE			EQU 0x30
+    45                              <1> 
+    46                              <1> 	; Routines in vfs.mod (accessed via INT 0x40)
+    47                              <1> 	VFS_OPEN				EQU 0xA
+    48                              <1> 	VFS_CLOSE				EQU 0xB
+    49                              <1> 	VFS_MOUNT				EQU 0xC
+    50                              <1> 	VFS_UMOUNT				EQU 0xD
+    51                              <1> 	VFS_REGISTER_FS			EQU 0xE
+    52                              <1> %endif
+   171                                  %include "./vfs_main.s"
+     1                              <1> 
+     2                              <1> ; ============ [ CODE BLOCK ] =========
+     3                              <1> ; Every module in MOS starts at location 0x64. The below 100 bytes, from 0x0 to
+     4                              <1> ; 0x63 is for the future use.
+     5                              <1> 	ORG 0x100
+     6                              <1> ;
+     7                              <1> ; The first routine in any module is the _init routine. This can be as simple
+     8                              <1> ; as a retf statement or can actually be used for something importaint.
+     9                              <1> _init:
+    10 00000000 60                  <1> 	pusha
+    11                              <1> 
+    12                              <1> 	; We will add each of the public methods to the despatcher
+    13                              <1> 	; Public methods: vfs_open, vfs_close, vfs_mount, vfs_umount and
+    14                              <1> 	;                 vfs_register_fs
+    15                              <1> 
+    16 00000001 BB3000              <1> 	mov bx, DS_ADD_ROUTINE
+    17 00000004 8CC9                <1> 	mov cx, cs
+    18                              <1> 
+    19                              <1> 	; Add the vfs_open method to despatcher
+    20 00000006 B80A00              <1> 	mov ax, 0xA
+    21 00000009 BA[4900]            <1> 	mov dx, vfs_open
+    22 0000000C CD40                <1> 	int 0x40
+    23                              <1> 
+    24                              <1> 	; Add the vfs_close method to despatcher
+    25 0000000E B80B00              <1> 	mov ax, 0xB
+    26 00000011 BA[3000]            <1> 	mov dx, vfs_close
+    27 00000014 CD40                <1> 	int 0x40
+    28                              <1> 
+    29                              <1> 	; Add the vfs_mount method to despatcher
+    30 00000016 B80C00              <1> 	mov ax, 0xC
+    31 00000019 BA[F801]            <1> 	mov dx, vfs_mount
+    32 0000001C CD40                <1> 	int 0x40
+    33                              <1> 
+    34                              <1> 	; Add the vfs_umount method to despatcher
+    35 0000001E B80D00              <1> 	mov ax, 0xD
+    36 00000021 BA[6F02]            <1> 	mov dx, vfs_umount
+    37 00000024 CD40                <1> 	int 0x40
+    38                              <1> 
+    39                              <1> 	; Add the vfs_register_fs method to despatcher
+    40 00000026 B80E00              <1> 	mov ax, 0xE
+    41 00000029 BA[0501]            <1> 	mov dx, vfs_register_fs
+    42 0000002C CD40                <1> 	int 0x40
+    43                              <1> 
+    44 0000002E 61                  <1> 	popa
+    45 0000002F CB                  <1> 	retf
+    46                              <1> 
+    47                              <1> ;TODO: Implement the vfs_write method.
+    48                              <1> ;TODO: Implement the vfs_read method.
+    49                              <1> ;TODO: Implement the vfs_seek method.
+    50                              <1> ;TODO: Implement the vfs_stat method.
+    51                              <1> ;TODO: Implement the vfs_initialize method. This method will return a
+    52                              <1> ;	   filesystem structure pointer to OS, which will be used to call the vfs 
+    53                              <1> ;	   methods, instead of the despatcher.
+    54                              <1> 
+    55                              <1> ; This call will mark the specified file as closed
+    56                              <1> ; Input:
+    57                              <1> ;		DS:AX - Near pointer to the where the specific file is stored in the
+    58                              <1> ;		        CS:fileslist array.
+    59                              <1> ; Output:
+    60                              <1> ;		BX - 0 if success, 1 if file already closed.
+    61                              <1> vfs_close:
+    62 00000030 50                  <1> 	push ax
+    63 00000031 89C3                <1> 		mov bx, ax			; Store the pointer into BX, helps in addressing.
+    64 00000033 2E8D1F              <1> 		lea bx, [cs:bx]
+    65                              <1> 	
+    66                              <1> 		; Check if file already closed
+    67 00000036 8A07                <1> 		mov al, [bx + file.nflags]
+    68 00000038 2401                <1> 		and al, (1 << FILE_OPEN_BIT)
+    69 0000003A 7408                <1> 		jz .file_closed
+    70                              <1> 
+    71                              <1> 		; Not closed, close it, CLEAR the FILE_OPEN_BIT
+    72 0000003C 8027FE              <1> 		and [bx + file.nflags], byte ~(1 << FILE_OPEN_BIT)
+    73                              <1> 
+    74 0000003F BB0000              <1> 		mov bx, 0
+    75 00000042 EB03                <1> 		jmp .end
+    76                              <1> .file_closed:
+    77 00000044 BB0100              <1> 		mov bx, 1
+    78                              <1> .end:
+    79 00000047 58                  <1> 	pop ax
+    80 00000048 C3                  <1> 	ret
+    81                              <1> 
+    82                              <1> ; The operating system will call this routine when it wants to get the file
+    83                              <1> ; structure for any file/device it wants to open (on any drive and any device).
+    84                              <1> ; Input:
+    85                              <1> ;		DS:AX - Can be any value, not really used.
+    86                              <1> ;		DS:CX - Far pointer to asciiz file name, including the mount point.
+    87                              <1> ;				Format: MountPoint:/dir1/dir2/filename
+    88                              <1> ;		DX	  - Flags ot be provided as it is to the underlying file system
+    89                              <1> ;				module for the file.
+    90                              <1> ; Output:
+    91                              <1> ;		ES:BX - Holds the location of the file object that was created. When
+    92                              <1> ;				successful, ES = data segment of VFS module, as files are 
+    93                              <1> ;				stored here.
+    94                              <1> ;			  - ES = 0, in case or error, BX = 101, if drive was not found.
+    95                              <1> ;			                              BX = 102, if maximum files are open.
+    96                              <1> vfs_open:
+    97 00000049 55                  <1> 	push bp
+    98 0000004A 89E5                <1> 	mov bp, sp
+    99                              <1> 
+   100                              <1> 	struc params, 2
+   101 00000002 <res 00000002>      <1> 		.mounted_file resw 1
+   102 00000004 <res 00000002>      <1> 		.filename_with_path resw 1
+   103 00000006 <res 00000002>      <1> 		.flags resw 1
+   104 00000008 <res 00000002>      <1> 		.return_status resw 1
+   105                              <1> 	endstruc
+   106                              <1> 
+   107 0000004C 8946FE              <1> 	mov [bp - params.mounted_file], ax
+   108 0000004F 894EFC              <1> 	mov [bp - params.filename_with_path], cx
+   109 00000052 8956FA              <1> 	mov [bp - params.flags], dx
+   110                              <1> 
+   111 00000055 50                  <1> 	push ax
+   112 00000056 51                  <1> 	push cx
+   113 00000057 52                  <1> 	push dx
+   114 00000058 56                  <1> 	push si
+   115 00000059 57                  <1> 	push di
+   116 0000005A 1E                  <1> 	push ds
+   117                              <1> 
+   118                              <1> 	; -------------------------------------------------------------------------
+   119                              <1> 	; 1. Get drive name
+   120                              <1> 	; -------------------------------------------------------------------------
+   121 0000005B 8B46FC              <1> 	mov ax, [bp - params.filename_with_path]	; Near pointer to string
+   122 0000005E B93A00              <1> 	mov cx, ':'				; Drive names end with : always
+   123 00000061 BA0000              <1> 	mov dx, 0				; Start searching from index 0
+   124 00000064 E88400              <1> 	call _str_indexof		; returns the index in BX
+   125                              <1> 
+   126                              <1> 	; Insert a \0 after the drive name
+   127 00000067 01C3                <1> 	add bx, ax				
+   128 00000069 C6470100            <1> 	mov [bx + 1], byte 0
+   129                              <1> 
+   130                              <1> 	; Modify filename_with_path, so that it now points to the string that
+   131                              <1> 	; excludes the 'drive:\0' part
+   132 0000006D 83C302              <1> 	add bx, 2								; BX was at drive:<--- here at ':'
+   133 00000070 015EFC              <1> 	add [bp - params.filename_with_path],bx
+   134                              <1> 	; -------------------------------------------------------------------------
+   135                              <1> 	; 2. Get the mount point
+   136                              <1> 	; -------------------------------------------------------------------------
+   137                              <1> 	; Searches drive name in near pointer DS:AX
+   138                              <1> 	; Returns a far pointer in ES:BX
+   139 00000073 E87B02              <1> 	call get_mount_point_from_drive	
+   140 00000076 83FB00              <1> 	cmp bx, 0						; If not found, ES and BX are set to 0
+   141 00000079 7437                <1> 	je .drive_not_found
+   142                              <1> 	
+   143                              <1> 	; -------------------------------------------------------------------------
+   144                              <1> 	; 3. Call filesystem operations Open routine
+   145                              <1> 	; -------------------------------------------------------------------------
+   146                              <1> 	; Load ES and BX with the location of filesystem from the mount point
+   147 0000007B 26C41F              <1> 	les bx, [es:bx + mount_point.filesystem] 	
+   148                              <1> 
+   149                              <1> 	; Load address of the file_operations 
+   150 0000007E 26C45F0E            <1> 	les bx, [es:bx + filesystem.fo]
+   151                              <1> 
+   152                              <1> 	; Call the Open method
+   153 00000082 8B46FE              <1> 	mov ax, [bp - params.mounted_file]
+   154 00000085 8B4EFC              <1> 	mov cx, [bp - params.filename_with_path]
+   155 00000088 8B56FA              <1> 	mov dx, [bp - params.flags]
+   156 0000008B 26FF1F              <1> 	call far [es:bx + file_operations.open]		
+   157                              <1> 	
+   158 0000008E 8CC0                <1> 	mov ax, es			; Segment of the specific file system module
+   159 00000090 89DE                <1> 	mov si, bx			; BX holds the offset in that segment
+   160                              <1> 
+   161                              <1> 	; Check if open call was a success
+   162 00000092 83F800              <1> 	cmp ax, 0
+   163 00000095 7429                <1> 	je .open_failed_from_child
+   164                              <1> 
+   165                              <1> 	; -------------------------------------------------------------------------
+   166                              <1> 	; 4. Now copy the newly created file structure in the respective file
+   167                              <1> 	;    system module to local array. All opened files via VFS resides in side
+   168                              <1> 	;    VFS itself.
+   169                              <1> 	; -------------------------------------------------------------------------
+   170 00000097 E82E00              <1> 	call _get_free_file_location	; Returns a near pointer in BX
+   171 0000009A 83FB00              <1> 	cmp bx, 0						; On failure returns 0
+   172 0000009D 741A                <1> 	je .toomuch
+   173                              <1> 
+   174 0000009F 53                  <1> 	push bx				; Preserve this offset, needs to be returned
+   175 000000A0 89DF                <1> 		mov di, bx		; DI holds now the offset at will file will be copied
+   176                              <1> 
+   177                              <1> 		; Make changes in segment registers that will make copying easy.
+   178                              <1> 		; Make DS = segment of the file system
+   179 000000A2 8ED8                <1> 		mov ds, ax
+   180                              <1> 
+   181                              <1> 		; Make ES = CS
+   182 000000A4 0E                  <1> 		push cs
+   183 000000A5 07                  <1> 		pop es
+   184                              <1> 
+   185                              <1> 		; Copy file_size bytes from source (FS module) to destination (local)
+   186 000000A6 B92400              <1> 		mov cx, file_size
+   187 000000A9 F3A4                <1> 		rep movsb		; Copies CX bytes from DS:SI to ES:DI
+   188                              <1> 
+   189 000000AB 5B                  <1> 	pop bx
+   190                              <1> 
+   191                              <1> 	; Mark the flie as Open by SETTING FILE_OPEN_BIT bit.
+   192 000000AC 26800F01            <1> 	or [es:bx + file.nflags],byte (1 << FILE_OPEN_BIT)
+   193                              <1> 
+   194                              <1> .drive_found:
+   195                              <1> 	; At this point, ES = CS and BX = offset where the new file is stored.
+   196 000000B0 EB0E                <1> 	jmp .end
+   197                              <1> .drive_not_found:
+   198 000000B2 31DB                <1> 	xor bx, bx
+   199 000000B4 8EC3                <1> 	mov es, bx
+   200 000000B6 BB6500              <1> 	mov bx, 101
+   201                              <1> .toomuch:
+   202 000000B9 31DB                <1> 	xor bx, bx
+   203 000000BB 8EC3                <1> 	mov es, bx
+   204 000000BD BB6600              <1> 	mov bx, 102
+   205                              <1> .open_failed_from_child:
+   206                              <1> 	; At this point ES = 0 and BX has some value recognising the error.
+   207                              <1> .end:
+   208 000000C0 1F                  <1> 	pop ds
+   209 000000C1 5F                  <1> 	pop di
+   210 000000C2 5E                  <1> 	pop si
+   211 000000C3 5A                  <1> 	pop dx
+   212 000000C4 59                  <1> 	pop cx
+   213 000000C5 58                  <1> 	pop ax
+   214 000000C6 C9                  <1> 	leave	; sets sp = bp and then pops ep
+   215 000000C7 CB                  <1> 	retf
+   216                              <1> 
+   217                              <1> 
+   218                              <1> ; Checks the CS:fileslist array to see which location can be used to store a
+   219                              <1> ; new file structure. Free files are marked using the .nflags field in the file
+   220                              <1> ; structure.
+   221                              <1> ; Input:
+   222                              <1> ;		None
+   223                              <1> ; Output:
+   224                              <1> ;		BS: Near pointer to the free location, 0 if none is free
+   225                              <1> _get_free_file_location:
+   226 000000C8 50                  <1> 	push ax
+   227 000000C9 51                  <1> 	push cx
+   228 000000CA 56                  <1> 	push si
+   229 000000CB 1E                  <1> 	push ds
+   230                              <1> 
+   231                              <1> 	; Make DS = CS
+   232 000000CC 0E                  <1> 	push cs
+   233 000000CD 1F                  <1> 	pop ds
+   234                              <1> 
+   235 000000CE BE[6504]            <1> 	mov si, fileslist
+   236 000000D1 B90A00              <1> 	mov cx, MAX_OPEN_FILES_COUNT
+   237                              <1> .again:
+   238 000000D4 AC                  <1> 	lodsb			; Loads AL with value in DS:SI
+   239 000000D5 3C00                <1> 	cmp al, 0
+   240 000000D7 740B                <1> 	je .free
+   241                              <1> 
+   242 000000D9 83C624              <1> 	add si, file_size
+   243 000000DC 49                  <1> 	dec cx
+   244 000000DD 75F5                <1> 	jnz .again
+   245                              <1> 
+   246                              <1> .none_free:
+   247 000000DF BB0000              <1> 	mov bx, 0
+   248 000000E2 EB02                <1> 	jmp .end
+   249                              <1> .free:
+   250 000000E4 89F3                <1> 	mov bx, si
+   251                              <1> .end:
+   252 000000E6 1F                  <1> 	pop ds
+   253 000000E7 5E                  <1> 	pop si
+   254 000000E8 59                  <1> 	pop cx
+   255 000000E9 58                  <1> 	pop ax
+   256 000000EA C3                  <1> 	ret
+   257                              <1> 
+   258                              <1> ; Find index of a character in the asciiz string
+   259                              <1> ; Input:
+   260                              <1> ;		DS:AX = location of string
+   261                              <1> ;		CX = Character to find
+   262                              <1> ;		DX = Start index
+   263                              <1> ; Output:
+   264                              <1> ;		BX = index of the character. First character is at location 0
+   265                              <1> _str_indexof:		
+   266 000000EB 56                  <1> 	push si
+   267 000000EC 50                  <1> 	push ax
+   268                              <1> 
+   269 000000ED 89C6                <1> 		mov si, ax
+   270 000000EF 89D3                <1> 		mov bx, dx
+   271 000000F1 01D0                <1> 		add ax, dx
+   272                              <1> .again:
+   273 000000F3 AC                  <1> 		lodsb
+   274 000000F4 3C00                <1> 		cmp al, 0
+   275 000000F6 7407                <1> 		je .not_found
+   276                              <1> 
+   277 000000F8 38C8                <1> 		cmp al, cl
+   278 000000FA 7406                <1> 		je .end
+   279                              <1> 
+   280 000000FC 43                  <1> 		inc bx
+   281 000000FD EBF4                <1> 		jmp .again
+   282                              <1> .not_found:
+   283 000000FF BBFFFF              <1> 		mov bx, 0xFFFF
+   284                              <1> .end:
+   285 00000102 58                  <1> 	pop ax
+   286 00000103 5E                  <1> 	pop si
+   287 00000104 C3                  <1> 	ret
+   172                                  %include "vfs_base.s"
+     1                              <1> ; Megha Virtual File System Basic routines.
+     2                              <1> ; This file contains the basic routines of a VFS module.
+     3                              <1> ; --------
+     4                              <1> ; Routines:
+     5                              <1> ; --------
+     6                              <1> ;   * void register_fs(struct filesystem* newfs);
+     7                              <1> ;   * void mount(struct file *source, char *fsname, char *drive);
+     8                              <1> ;   * int unmount(char *drive);
+     9                              <1> ;
+    10                              <1> ; --------
+    11                              <1> ; Note:
+    12                              <1> ; --------
+    13                              <1> ; The VFS.S is the main file that includes this file. 
+    14                              <1> ;
+    15                              <1> ;
+    16                              <1> ; ============ [ CODE BLOCK ] =========
+    17                              <1> ;
+    18                              <1> ; Adds a new File system into the file systems list.
+    19                              <1> ; Signature: 
+    20                              <1> ;		void register_fs(struct filesystem* newfs);
+    21                              <1> ; Input:
+    22                              <1> ;	   DS:AX - Far pointer to a 'filesystem' structure.
+    23                              <1> ; Output:
+    24                              <1> ;		BX - 0, if successful, 1 if failure
+    25                              <1> vfs_register_fs:
+    26 00000105 50                  <1> 	push ax
+    27 00000106 51                  <1> 	push cx
+    28 00000107 52                  <1> 	push dx
+    29 00000108 56                  <1> 	push si
+    30 00000109 57                  <1> 	push di
+    31 0000010A 06                  <1> 	push es
+    32                              <1> 
+    33                              <1> 	; Set ES to be the current code segmnet
+    34 0000010B 0E                  <1> 	push cs
+    35 0000010C 07                  <1> 	pop es
+    36                              <1> 
+    37                              <1> 	; Store AX (far pointer to filesystem strucure) to DX
+    38 0000010D 89C2                <1> 	mov dx, ax
+    39                              <1> 
+    40 0000010F 2E8B1E[AD03]        <1> 	mov bx, [cs:fslist_count]
+    41 00000114 83FB0A              <1> 	cmp bx, byte MAX_REGISTERED_FILESYSTEM 
+    42 00000117 742F                <1> 	je .toomuch
+    43                              <1> 
+    44                              <1> 	; Here on DS points to the data segment of the caler, and ES to the
+    45                              <1> 	; current module.
+    46                              <1> 	; -----------------------------------------------------------------
+    47                              <1> 	; 1. Check if same file system exists in the list of registered file
+    48                              <1> 	; systems.
+    49                              <1> 	; -----------------------------------------------------------------
+    50                              <1> 	; SI -> Location of the File system name in the input filesystem
+    51                              <1> 	; structure.
+    52 00000119 89D3                <1> 	mov bx, dx
+    53 0000011B 8D37                <1> 	lea si, [bx + filesystem.fsname]		; File sytem name: DS:SI
+    54                              <1> 
+    55                              <1> 	; Returns the pointer to the file system which matches name with the
+    56                              <1> 	; string in DS:SI. The match is case in-sensitive.
+    57                              <1> 	; ES MUST POINT TO THE DATA SEGMENT OF THIS MODULE.
+    58 0000011D E8A100              <1> 	call get_filesystem_from_name			
+    59 00000120 83FB00              <1> 	cmp bx, 0
+    60 00000123 751E                <1> 	jne .fs_found
+    61                              <1> 	; -----------------------------------------------------------------
+    62                              <1> 
+    63                              <1> .copy_fs_to_local:
+    64                              <1> 	; -----------------------------------------------------------------
+    65                              <1> 	; 2. Copy the filesystem from DS:DX (caller location) to ES:DI (Local)
+    66                              <1> 	; -----------------------------------------------------------------
+    67                              <1> 	; a. Get the next location in the local filesystem array
+    68 00000125 268B1E[AD03]        <1> 	mov bx, [es:fslist_count]
+    69 0000012A 6BDB12              <1> 	imul bx, filesystem_size
+    70 0000012D 268DBF[F902]        <1> 	lea di, [es:fslist + bx]
+    71                              <1> 
+    72                              <1> 	; b. We make SI point to the source offset
+    73 00000132 89D6                <1> 	mov si, dx
+    74                              <1> 
+    75                              <1> 	; c. Source = DS:SI, Destination = ES:DI
+    76 00000134 B91200              <1> 	mov cx, filesystem_size
+    77 00000137 F3A4                <1> 	rep movsb
+    78                              <1> 	; -----------------------------------------------------------------
+    79                              <1> .done:
+    80                              <1> 	; increment fs count
+    81 00000139 26FE06[AD03]        <1> 	inc byte [es:fslist_count]
+    82                              <1> 
+    83                              <1> 	; Return as success
+    84 0000013E BB0000              <1> 	mov bx, 0
+    85 00000141 EB08                <1> 	jmp .end
+    86                              <1> 
+    87                              <1> .fs_found:
+    88 00000143 BB0200              <1> 	mov bx, 2
+    89 00000146 EB03                <1> 	jmp .end
+    90                              <1> .toomuch:
+    91 00000148 BB0100              <1> 	mov bx, 1
+    92                              <1> .end:
+    93                              <1> 	; Restore the registers
+    94 0000014B 07                  <1> 	pop es
+    95 0000014C 5F                  <1> 	pop di
+    96 0000014D 5E                  <1> 	pop si
+    97 0000014E 5A                  <1> 	pop dx
+    98 0000014F 59                  <1> 	pop cx
+    99 00000150 58                  <1> 	pop ax
+   100                              <1> 
+   101                              <1> 	; A far jump is required to return to the despatcher.
+   102 00000151 C3                  <1> 	ret
+   103                              <1> 
+   104                              <1> ; Compares source with the destination anciiz string
+   105                              <1> ; Input:
+   106                              <1> ;		DS:SI - Source string
+   107                              <1> ;		ES:DI - Destination string
+   108                              <1> ;		BX    - 1 if compare binary or 0 if compare string.
+   109                              <1> ; Output:
+   110                              <1> ;		BS - 0, if strings match, otherwise 1
+   111                              <1> _str_is_equal:
+   112 00000152 50                  <1> 	push ax
+   113 00000153 52                  <1> 	push dx
+   114 00000154 51                  <1> 	push cx
+   115 00000155 56                  <1> 	push si
+   116 00000156 57                  <1> 	push di
+   117                              <1> 
+   118 00000157 53                  <1> 	push bx
+   119                              <1> 		; Get Source length
+   120 00000158 E85700              <1> 		call _strlen			; Get the length of string at DS:SI
+   121 0000015B 89D9                <1> 		mov cx, bx
+   122                              <1> 
+   123                              <1> 		; Get Destination length
+   124 0000015D 1E                  <1> 		push ds
+   125 0000015E 56                  <1> 		push si
+   126                              <1> 
+   127                              <1> 			; make DS = ES (ES = destination string data segment)
+   128 0000015F 06                  <1> 			push es
+   129 00000160 1F                  <1> 			pop ds
+   130                              <1> 			
+   131                              <1> 			; Now that ES:DI, has become DS:SI, we can call _strlen
+   132 00000161 89FE                <1> 			mov si, di
+   133 00000163 E84C00              <1> 			call _strlen	
+   134 00000166 89DA                <1> 			mov dx, bx
+   135 00000168 5E                  <1> 		pop si
+   136 00000169 1F                  <1> 		pop ds
+   137 0000016A 5B                  <1> 	pop bx
+   138                              <1> 
+   139                              <1> 	; Compare DX (Destination string length), CX (Source string length)
+   140 0000016B 39CA                <1> 	cmp dx, cx
+   141 0000016D 7202                <1> 	jb .continue
+   142                              <1> 
+   143                              <1> 	; DX > CX, so we make CX = DX (the maximum count)
+   144 0000016F 89D1                <1> 	mov cx, dx
+   145                              <1> 
+   146                              <1> 	; Check if we need to do a case sensitive compare or a insensitive one.
+   147                              <1> .continue:
+   148 00000171 83FB00              <1> 	cmp bx, 0
+   149 00000174 7409                <1> 	je .case_insensitive_match
+   150                              <1> 
+   151                              <1> .case_sensitive_match:
+   152 00000176 F3A6                <1> 	rep cmpsb
+   153 00000178 83F900              <1> 	cmp cx, 0
+   154 0000017B 7427                <1> 	je .match
+   155 0000017D 752A                <1> 	jne .notmatch
+   156                              <1> 
+   157                              <1> .case_insensitive_match:
+   158 0000017F BB0200              <1> 	mov bx,2
+   159                              <1> .readsource:
+   160 00000182 3E8A04              <1> 	mov al, [ds:si]
+   161 00000185 EB05                <1> 	jmp .tolower
+   162                              <1> .readdestination:
+   163 00000187 88C4                <1> 	mov ah, al
+   164 00000189 268A05              <1> 	mov al, [es:di]
+   165                              <1> .tolower:
+   166                              <1> 	; Check to see AL >= 'A' and AL <= 'Z'
+   167                              <1> 	; If AL is in upper case then makes it lower case
+   168 0000018C 3C41                <1> 	cmp al, 'A'
+   169 0000018E 7206                <1> 	jb .not_upper
+   170                              <1> 	
+   171 00000190 3C5A                <1> 	cmp al, 'Z'
+   172 00000192 7702                <1> 	ja .not_upper
+   173                              <1> 
+   174                              <1> 	; Make AL lower case 
+   175                              <1> 	; if AL = A, then AL + 'a' - 'A' = 'a'
+   176 00000194 0420                <1> 	add al, 'a' - 'A'
+   177                              <1> .not_upper:
+   178 00000196 4B                  <1> 	dec bx
+   179 00000197 83FB01              <1> 	cmp bx, 1
+   180 0000019A 74EB                <1> 	je .readdestination
+   181                              <1> 
+   182                              <1> .compare:
+   183 0000019C 38E0                <1> 	cmp al, ah
+   184 0000019E 7509                <1> 	jne .notmatch
+   185                              <1> 
+   186 000001A0 46                  <1> 	inc si
+   187 000001A1 47                  <1> 	inc di
+   188 000001A2 E2DB                <1> 	loop .case_insensitive_match
+   189                              <1> 
+   190                              <1> .match:
+   191 000001A4 BB0000              <1> 	mov bx, 0
+   192 000001A7 EB03                <1> 	jmp .end
+   193                              <1> .notmatch:
+   194 000001A9 BB0100              <1> 	mov bx, 1
+   195                              <1> .end:
+   196 000001AC 5F                  <1> 	pop di
+   197 000001AD 5E                  <1> 	pop si
+   198 000001AE 59                  <1> 	pop cx
+   199 000001AF 5A                  <1> 	pop dx
+   200 000001B0 58                  <1> 	pop ax
+   201 000001B1 C3                  <1> 	ret
+   202                              <1> 
+   203                              <1> ; Calculates string length
+   204                              <1> ; Input:
+   205                              <1> ;		DS:SI - Pointer to a asciiz string
+   206                              <1> ; Output:
+   207                              <1> ;		BX - Length of the string
+   208                              <1> _strlen:
+   209 000001B2 56                  <1> 	push si
+   210 000001B3 50                  <1> 	push ax
+   211 000001B4 31DB                <1> 		xor bx, bx
+   212                              <1> .again:
+   213 000001B6 AC                  <1> 		lodsb
+   214 000001B7 3C00                <1> 		cmp al, 0
+   215 000001B9 7403                <1> 		je .end
+   216                              <1> 
+   217 000001BB 43                  <1> 		inc bx
+   218 000001BC EBF8                <1> 		jmp .again
+   219                              <1> .end:
+   220 000001BE 58                  <1> 	pop ax
+   221 000001BF 5E                  <1> 	pop si
+   222 000001C0 C3                  <1> 	ret
+   223                              <1> 
+   224                              <1> ; Get near pointer to the filesystem structure which matches the supplied name.
+   225                              <1> ; Note: 
+   226                              <1> ; This function will most likely be called from the environment where DS points
+   227                              <1> ; to the data segment of the caller module and ES points to the one of this
+   228                              <1> ; module. Therefore, the file system array is available with the ES segment not
+   229                              <1> ; with the DS segment.
+   230                              <1> ; Input:
+   231                              <1> ;		DS:SI - Contains the name of the file system.
+   232                              <1> ; Output:
+   233                              <1> ;		ES:BX - Location of the file system structure for the name supplied, if
+   234                              <1> ; 				no match is found, BX is set to 0.
+   235                              <1> get_filesystem_from_name:
+   236 000001C1 52                  <1> 	push dx
+   237 000001C2 51                  <1> 	push cx
+   238 000001C3 57                  <1> 	push di
+   239 000001C4 56                  <1> 	push si
+   240                              <1> 	
+   241                              <1> 	; Set ES to be the current code segmnet
+   242 000001C5 0E                  <1> 	push cs
+   243 000001C6 07                  <1> 	pop es
+   244                              <1> 
+   245                              <1> 	; Number of file systems already installed.
+   246                              <1> 	; If there is no registered file system, we skip and return false.
+   247 000001C7 268B0E[AD03]        <1> 	mov cx, [es:fslist_count]						
+   248 000001CC 83F900              <1> 	cmp cx, 0
+   249 000001CF 741B                <1> 	je .notfound
+   250                              <1> 
+   251                              <1> 	; Points to the next offset in the fslist array.
+   252 000001D1 31DB                <1> 	xor bx, bx
+   253                              <1> .next_fs:
+   254 000001D3 268DBF[F902]        <1> 	lea di, [es:fslist + bx + filesystem.fsname]
+   255 000001D8 53                  <1> 	push bx
+   256                              <1> 		; Match as per set in the VFS.INC file. I think it is set to 'case
+   257                              <1> 		; in-sensitive' checking.
+   258 000001D9 BB0000              <1> 		mov bx, STRING_MATCH
+   259 000001DC E873FF              <1> 		call _str_is_equal	; matches string (case insensitive) from DS:SI with
+   260                              <1> 							; ES:DI
+   261 000001DF 89DA                <1> 		mov dx, bx
+   262 000001E1 5B                  <1> 	pop bx
+   263 000001E2 83FA00              <1> 	cmp dx, 0
+   264 000001E5 740A                <1> 	je .found
+   265                              <1> 
+   266 000001E7 83C312              <1> 	add bx, filesystem_size
+   267 000001EA E2E7                <1> 	loop .next_fs
+   268                              <1> 
+   269                              <1> .notfound:
+   270 000001EC BB0000              <1> 	mov bx, 0
+   271 000001EF EB02                <1> 	jmp .end
+   272                              <1> .found:
+   273 000001F1 89FB                <1> 	mov bx, di
+   274                              <1> .end:
+   275 000001F3 5E                  <1> 	pop si
+   276 000001F4 5F                  <1> 	pop di
+   277 000001F5 59                  <1> 	pop cx
+   278 000001F6 5A                  <1> 	pop dx
+   279 000001F7 C3                  <1> 	ret
+   280                              <1> 		
+   281                              <1> ; Creates a mount_point structure and adds it to the list of mount points.
+   282                              <1> ; Signature: 
+   283                              <1> ; 		void mount(struct file *source, char *fsname, char *drive);
+   284                              <1> ; Input:
+   285                              <1> ;		DS:AX - Pointer to the file structure
+   286                              <1> ;		DS:CX - File system name. This must be one of the registered file
+   287                              <1> ;				systems. String is case insensitive.
+   288                              <1> ;		DS:DX - Holds a pointer to the drive name. Upto 10 characters, 
+   289                              <1> ;				including the null terminator.
+   290                              <1> ; Output:
+   291                              <1> ;		BX - 0 if success
+   292                              <1> ;			 1 if file system do not exist
+   293                              <1> ;			 2 if drive is already registered.
+   294                              <1> vfs_mount:
+   295 000001F8 55                  <1> 	push bp
+   296 000001F9 89E5                <1> 	mov bp, sp
+   297                              <1> 
+   298                              <1> struc mount_args
+   299 00000000 <res 00000002>      <1> 	.file_ptr resw 1
+   300 00000002 <res 00000002>      <1> 	.fsname_ptr resw 1
+   301 00000004 <res 00000002>      <1> 	.drive_name_ptr resw 1
+   302                              <1> endstruc
+   303                              <1> 
+   304 000001FB 83EC06              <1> 	sub sp, mount_args_size
+   305                              <1> 
+   306 000001FE 894600              <1> 	mov [bp - mount_args.file_ptr], ax
+   307 00000201 894EFE              <1> 	mov [bp - mount_args.fsname_ptr], cx
+   308 00000204 8956FC              <1> 	mov [bp - mount_args.drive_name_ptr], dx
+   309                              <1> 
+   310 00000207 57                  <1> 	push di
+   311 00000208 56                  <1> 	push si
+   312 00000209 51                  <1> 	push cx
+   313 0000020A 52                  <1> 	push dx
+   314 0000020B 06                  <1> 	push es
+   315                              <1> 	
+   316                              <1> 	; Set ES to be the current code segmnet
+   317 0000020C 0E                  <1> 	push cs
+   318 0000020D 07                  <1> 	pop es
+   319                              <1> 
+   320                              <1> 	; At this point DS points to the data segment of the caller and ES to
+   321                              <1> 	; the data segment of the current module.
+   322                              <1> 	
+   323                              <1> 	; --------------------------------------------------------------------
+   324                              <1> 	; 1. Search if a file system with the name in DS:CX exists, in
+   325                              <1> 	; ES:fslist.
+   326                              <1> 	; --------------------------------------------------------------------
+   327                              <1> 	; get_filesystem_from_name searches CS:fslist with the filesystem name
+   328                              <1> 	; in DS:SI. Returns the pointer to the respective file system structure
+   329                              <1> 	; in ES:BX.
+   330 0000020E 8B76FE              <1> 	mov si, [bp - mount_args.fsname_ptr]
+   331 00000211 E8ADFF              <1> 	call get_filesystem_from_name
+   332 00000214 83FB00              <1> 	cmp bx, 0
+   333 00000217 7447                <1> 	je .filesystem_not_found
+   334 00000219 89DA                <1> 	mov dx, bx				; offset where the filesystem item is located
+   335                              <1> 							; in the fslist array.
+   336                              <1> 	; --------------------------------------------------------------------
+   337                              <1> 	; 2. Check if drive with name in DS:DX, already exists in the 
+   338                              <1> 	; ES:mountlist array.
+   339                              <1> 	; --------------------------------------------------------------------
+   340 0000021B 8B76FC              <1> 	mov si, [bp - mount_args.drive_name_ptr]
+   341 0000021E E89400              <1> 	call _get_mount_point_from_drive
+   342 00000221 83FB00              <1> 	cmp bx, 0
+   343 00000224 753F                <1> 	jne .mount_point_exists
+   344                              <1> 
+   345                              <1> 	; --------------------------------------------------------------------
+   346                              <1> 	; Copy the values in the next in the mountlist array.
+   347                              <1> 	; --------------------------------------------------------------------
+   348 00000226 268B1E[6304]        <1> 	mov bx, [es:mountlist_count]
+   349 0000022B 6BDB12              <1> 	imul bx, mount_point_size
+   350                              <1> 
+   351                              <1> 	; a. Copy filesystem pointer (ES:DX)
+   352 0000022E 268DBF[AF03]        <1> 	lea di, [es:mountlist + bx + mount_point.filesystem]
+   353 00000233 268915              <1> 	mov [es:di], word dx
+   354 00000236 268C4502            <1> 	mov [es:di+2],word es
+   355                              <1> 
+   356                              <1> 	; b. Copy source file pointer (DS:AX)
+   357 0000023A 268DBF[B303]        <1> 	lea di, [es:mountlist + bx + mount_point.source_file]
+   358 0000023F 8B5600              <1> 	mov dx, word [bp - mount_args.file_ptr]
+   359 00000242 268915              <1> 	mov [es:di],dx 
+   360 00000245 268C5D02            <1> 	mov [es:di+2],word ds
+   361                              <1> 
+   362                              <1> 	; c. Copy the drive name (DS:CX)
+   363 00000249 8B76FC              <1> 	mov si, [bp - mount_args.drive_name_ptr]
+   364 0000024C 268DBF[B703]        <1> 	lea di, [es:mountlist + bx + mount_point.mount_name]
+   365 00000251 B90A00              <1> 	mov cx, MAX_DRIVE_NAME_LENGHT
+   366 00000254 F3A4                <1> 	rep movsb
+   367                              <1> 
+   368 00000256 26FF06[6304]        <1> 	inc word [es:mountlist_count]
+   369 0000025B BB0000              <1> 	mov bx, 0
+   370 0000025E EB08                <1> 	jmp .end
+   371                              <1> .filesystem_not_found:
+   372 00000260 BB0100              <1> 	mov bx, 1
+   373 00000263 EB03                <1> 	jmp .end
+   374                              <1> .mount_point_exists:
+   375 00000265 BB0200              <1> 	mov bx, 2
+   376                              <1> .end:
+   377 00000268 07                  <1> 	pop es
+   378 00000269 5A                  <1> 	pop dx
+   379 0000026A 59                  <1> 	pop cx
+   380 0000026B 5E                  <1> 	pop si
+   381 0000026C 5F                  <1> 	pop di
+   382 0000026D C9                  <1> 	leave	; sp = bp and pop bp 
+   383 0000026E C3                  <1> 	ret
+   384                              <1> 
+   385                              <1> ; Executing this routine will remove the mount point from the local mountlist
+   386                              <1> ; array and decrement the mount point count.
+   387                              <1> ; Signature:
+   388                              <1> ; 		int unmount(char *drive);
+   389                              <1> ; Input:
+   390                              <1> ;		DS:AX - Points to the name of drive to unmount
+   391                              <1> ; Output:
+   392                              <1> ;		BX    - 0 is successful, 
+   393                              <1> ;			  - 1 if drive do not exist
+   394                              <1> vfs_umount:
+   395 0000026F 50                  <1> 	push ax
+   396 00000270 56                  <1> 	push si
+   397 00000271 57                  <1> 	push di
+   398 00000272 52                  <1> 	push dx
+   399 00000273 51                  <1> 	push cx
+   400 00000274 06                  <1> 	push es
+   401 00000275 1E                  <1> 	push ds
+   402                              <1> 
+   403                              <1> 		; -----------------------------------------------------------------
+   404                              <1> 		; Make ES = CS
+   405                              <1> 		; -----------------------------------------------------------------
+   406 00000276 0E                  <1> 		push cs
+   407 00000277 07                  <1> 		pop es
+   408                              <1> 
+   409                              <1> 		; -----------------------------------------------------------------
+   410                              <1> 		; 1. Get the mount point location 
+   411                              <1> 		; Returns far pointer in ES:BX to mount_point structure after searching 
+   412                              <1> 		; for drive name in CS:mountlist_count with drive name in DS:SI
+   413                              <1> 		; -----------------------------------------------------------------
+   414 00000278 89C6                <1> 		mov si, ax
+   415 0000027A E83800              <1> 		call _get_mount_point_from_drive
+   416                              <1> 
+   417 0000027D 83FB00              <1> 		cmp bx, 0
+   418 00000280 7428                <1> 		je .not_found
+   419                              <1> 		; -----------------------------------------------------------------
+   420                              <1> 		; 2. If found we shift every mount point array item one item to the
+   421                              <1> 		;    left to fill the gap from the removed mount point.
+   422                              <1> 		; -----------------------------------------------------------------
+   423                              <1> 
+   424                              <1> 		; We no longer need to access caller data segment so we make DS = ES =
+   425                              <1> 		; CS of this module.
+   426 00000282 0E                  <1> 		push cs
+   427 00000283 1F                  <1> 		pop ds
+   428                              <1> 
+   429                              <1> 		; DX = End address of the mountlist array
+   430                              <1> 		; This is used to check, if we have passed the last item.
+   431 00000284 53                  <1> 		push bx
+   432 00000285 8B1E[6304]          <1> 			mov bx, [mountlist_count]
+   433 00000289 6BDB12              <1> 			imul bx, mount_point_size
+   434 0000028C 8D97[AF03]          <1> 			lea dx, [mountlist + bx]
+   435 00000290 5B                  <1> 		pop bx
+   436                              <1> 	
+   437                              <1> 		; array item to be removed. 
+   438 00000291 89DF                <1> 		mov di, bx
+   439                              <1> 
+   440                              <1> 		; next array item to the one getting removed.
+   441 00000293 8D7712              <1> 		lea si, [bx + mount_point_size]
+   442                              <1> .next:
+   443 00000296 39D6                <1> 		cmp si, dx
+   444 00000298 7307                <1> 		jae	.last_item_to_remove
+   445                              <1> 
+   446                              <1> 	; TODO: The below CX assignment and rep may not be required. Just one movsb
+   447                              <1> 	; is all that may be is required. But REP may be faster.
+   448                              <1> 	; We copy this much byte for each item.
+   449 0000029A B91200              <1> 		mov cx, mount_point_size
+   450 0000029D F3A4                <1> 		rep movsb	; Copies one byte DS:SI to ES:DI and increments SI and DI
+   451                              <1> 
+   452 0000029F EBF5                <1> 		jmp .next
+   453                              <1> 
+   454                              <1> .last_item_to_remove:
+   455 000002A1 FF0E[6304]          <1> 		dec word [mountlist_count]
+   456 000002A5 BB0000              <1> 		mov bx, 0
+   457 000002A8 EB03                <1> 		jmp .end
+   458                              <1> .not_found:
+   459 000002AA BB0100              <1> 	mov bx, 1
+   460                              <1> .end:
+   461 000002AD 1F                  <1> 	pop ds
+   462 000002AE 07                  <1> 	pop es
+   463 000002AF 59                  <1> 	pop cx
+   464 000002B0 5A                  <1> 	pop dx
+   465 000002B1 5F                  <1> 	pop di
+   466 000002B2 5E                  <1> 	pop si
+   467 000002B3 58                  <1> 	pop ax
+   468 000002B4 C3                  <1> 	ret
+   469                              <1> 
+   470                              <1> ; Returns a far pointer to a 'mount_point' structure that matches the specified
+   471                              <1> ; name.
+   472                              <1> ; Signature:
+   473                              <1> ;	mount_point *get_mount_point(char *drive);
+   474                              <1> ; Input:
+   475                              <1> ;		DS:SI - Name of the drive
+   476                              <1> ; Output:
+   477                              <1> ;		ES:BX  - Far Pointer to the mount_point structure in the 'mountlist'
+   478                              <1> ;				 array which is part of this module.
+   479                              <1> ;				 If not found, then ES and BX is set to 0
+   480                              <1> _get_mount_point_from_drive:
+   481 000002B5 52                  <1> 	push dx
+   482 000002B6 51                  <1> 	push cx
+   483 000002B7 57                  <1> 	push di
+   484 000002B8 56                  <1> 	push si
+   485                              <1> 
+   486                              <1> 	; Make ES = CS
+   487 000002B9 0E                  <1> 	push cs
+   488 000002BA 07                  <1> 	pop es
+   489                              <1> 
+   490                              <1> 	; If there is no registered mount points, we skip and return false.
+   491 000002BB 268B0E[6304]        <1> 	mov cx, [es:mountlist_count]
+   492 000002C0 83F900              <1> 	cmp cx, 0
+   493 000002C3 741B                <1> 	je .notfound
+   494                              <1> 
+   495                              <1> 	; Points to the next offset in the mountlist array.
+   496 000002C5 31DB                <1> 	xor bx, bx
+   497                              <1> .next_mp:
+   498 000002C7 268DBF[B703]        <1> 	lea di, [es:mountlist + bx + mount_point.mount_name]
+   499 000002CC 53                  <1> 	push bx
+   500                              <1> 		; Match as per set in the VFS.INC file. I think it is set to 'case
+   501                              <1> 		; in-sensitive' checking.
+   502 000002CD BB0000              <1> 		mov bx, STRING_MATCH
+   503 000002D0 E87FFE              <1> 		call _str_is_equal	; matches string (case insensitive) from DS:SI with
+   504                              <1> 							; ES:DI
+   505 000002D3 89DA                <1> 		mov dx, bx
+   506 000002D5 5B                  <1> 	pop bx
+   507 000002D6 83FA00              <1> 	cmp dx, 0
+   508 000002D9 740C                <1> 	je .found
+   509                              <1> 
+   510 000002DB 83C312              <1> 	add bx, mount_point_size
+   511 000002DE E2E7                <1> 	loop .next_mp
+   512                              <1> 
+   513                              <1> .notfound:
+   514 000002E0 BB0000              <1> 	mov bx, 0
+   515 000002E3 8EC3                <1> 	mov es, bx
+   516 000002E5 EB05                <1> 	jmp .end
+   517                              <1> .found:
+   518 000002E7 268D9F[AF03]        <1> 	lea bx, [es:mountlist + bx]
+   519                              <1> .end:
+   520 000002EC 5E                  <1> 	pop si
+   521 000002ED 5F                  <1> 	pop di
+   522 000002EE 59                  <1> 	pop cx
+   523 000002EF 5A                  <1> 	pop dx
+   524 000002F0 C3                  <1> 	ret
+   525                              <1> 
+   526                              <1> ; Returns a far pointer to a 'mount_point' structure that matches the specified
+   527                              <1> ; name. A helper function that calls _get_mount_point_from_drive.
+   528                              <1> ; Signature:
+   529                              <1> ;	mount_point *get_mount_point(char *drive);
+   530                              <1> ; Input:
+   531                              <1> ;		DS:AX - Name of the drive
+   532                              <1> ; Output:
+   533                              <1> ;		ES:BX  - Far Pointer to the mount_point structure in the 'mountlist'
+   534                              <1> ;				 array which is part of this module.
+   535                              <1> ;				 If not found, then ES and BX is 0
+   536                              <1> get_mount_point_from_drive:
+   537 000002F1 56                  <1> 	push si
+   538 000002F2 89C6                <1> 		mov si, ax
+   539 000002F4 E8BEFF              <1> 		call _get_mount_point_from_drive
+   540 000002F7 5E                  <1> 	pop si
+   541 000002F8 C3                  <1> 	ret
+   173                                  
+   174                                  ; =============== [ DATA SECTION ] ===================
+   175 000002F9 00<rept>                fslist: times MAX_REGISTERED_FILESYSTEM * filesystem_size db 0
+   176 000003AD 0000                    fslist_count: dw 0
+   177                                  
+   178 000003AF 00<rept>                mountlist: times MAX_MOUNT_POINT_COUNT * mount_point_size db 0
+   179 00000463 0000                    mountlist_count: dw 0
+   180                                  
+   181 00000465 00<rept>                fileslist: times MAX_OPEN_FILES_COUNT * file_size db 0

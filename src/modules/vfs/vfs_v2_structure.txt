@@ -1,0 +1,100 @@
+
+struc file
+{
+	struct file_operations *fo;		// is always same as mp->fs->fo
+	file_t type;
+	union {
+		dev_t dev;
+		struct mount_point *mp;
+	} file_info;
+	int usecount;
+};
+
+struct filesystem
+{
+	char *name;
+	struct file_operations *fo;
+	struct file_system_operations *fso;
+}
+
+struct mount_point
+{
+	char *drive_name;
+	struct file source_f;
+	struct filesystem *fs;
+	char Param_and_control_block[50];
+};
+
+struct file_system_operations
+{
+	int (*fs_read_bpb)(struct file *f, struct mount_point *mp);
+	int (*format)(struct file *f, struct mount_point *mp);
+};
+
+struct file_operations
+{
+	struct file *(*open)(struct mount_point *mp, char *filename);
+	int (*read)(struct *file, struct mount_point *mp, char *buffer, int count);
+}
+
+// mount operation
+int mount(struct file *source, char *fs, char *drive)
+{
+	struct mount_point *newmp;
+	newmp->fs = getFileSystemByName(fs);
+	memcpy(newmp->drive,drive,10)
+	newmp->source = source;
+	newmp->usecount = 0;
+	source->usecount++;
+
+	newmp->fs->fso->read_bpb(souce,newmp);
+	install_mp(newmp);
+}
+
+// File open operation
+struct file *open(struct mount_point *mp, char *filename)
+{
+	struct file *newfile;
+	newfile->mp = mp;
+	newfile->fo = mp->fs->fo;
+	newfile->base = mp->source;
+	mp->usecount++;
+}
+// Read operation
+int read(struct file *f, char *buffer, int count)
+{
+	// read from base file
+	f->base->fo->read(f->base,buffer,count);	
+
+	f->mp->source->fo->read(f->mp->souce,buffer,count)
+}
+// mount operation
+int mount(struct file *source, char *fs, char *drive)
+{
+	struct mount_point *newmp;
+	newmp->fs = getFileSystemByName(fs);
+	memcpy(newmp->drive,drive,10)
+	newmp->source = source;
+	newmp->usecount = 0;
+	source->usecount++;
+
+	newmp->fs->fso->read_bpb(souce,newmp);
+	install_mp(newmp);
+}
+
+// File open operation
+struct file *open(struct mount_point *mp, char *filename)
+{
+	struct file *newfile;
+	newfile->mp = mp;
+	newfile->fo = mp->fs->fo;
+	mp->usecount++;
+}
+
+// Read operation
+int read(struct file *f, char *buffer, int count)
+{
+	// read the base file
+	f->mp->source->mp->fs->fo->read(f->mp->source, buffer, count);
+	f->mp->source->fo->read(f->mp->souce,buffer,count)
+}

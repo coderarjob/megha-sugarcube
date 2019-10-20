@@ -1,0 +1,73 @@
+This document is a case study of the diffent Operating systems and their boot
+processes. The primary focus is however the DOS operating system from several
+different vendors.
+
+Normal Boot sequence in IBM PC
+------------------------------
+In the PC bootup sequence, the first sector of the boot disk is loaded into
+memory and executed. 
+
+If this is the DOS boot sector, it loads the first **three
+sectors** of IO.SYS into memory and transfers control to it. IO.SYS then:
+
+1. 	Loads the rest of itself into memory. 
+	Initializes each default device driver in turn (console, disk, serial
+		port, etc..). 
+	At this point, the default devices are available.
+
+2.	Loads the DOS kernel and calls its initialization routine. The
+	kernel is stored in **MSDOS.SYS** with MS-DOS and in IO.SYS with
+	Windows 9x. 
+
+	At this point, "normal" file access is available.
+3.	Processes the MSDOS.SYS file with Windows 9x.
+4.	Processes the CONFIG.SYS file, in MS-DOS 2.0 and higher and Windows 9x.
+5.	Loads COMMAND.COM (or other operating system shell if specified).
+6.	Displays the bootsplash in Windows 9x. If LOGO.SYS is present, it is 
+	used as the bootsplash. Otherwise, the bootsplash in IO.SYS is used.
+
+The IBM PC DOS kernel, IBMDOS.COM:
+-----------------------------------
+1.	Will have hardware independent parts of the OS - this means keyboard, mice,
+	vga drivers cannot be part of this. Console, File system can however be 
+	part of the kernel if we go only by this logic, whether we will is topic 
+	for our next discussion.
+	IBMDOS.COM was the DOS kernel, this file included the file system
+	(FTA32 in later versions) and code to provide DOS API to applications.
+
+2.	This IBMDOS.COM is a binary image containing executable code rather than a
+	true COM-style program. If invoked from command prompt (which can run COM 
+	files; IBMBOS.COM despite the .COM name is not a COM file) leads to system 
+	crash. This was solved in DR-DOS 7.02, because under these systems, the 
+	file is a **fat binary** and contained a COM-style stub that justs displays 
+	a version information and exits gracefully.
+
+Megha driver model
+------------------
+All of the device types attached to the computer will be accessed via its 
+corresponding drivers. Each of the device drivers must provide the following 
+features:
+
+NOTE: For now the megha OS drivers will be similar in structure as the linux
+character drivers.
+
+1.	Must be able to handle more than one device - There will one driver for
+each of the device types. For example, the keyboard driver must be able to
+handle more than one keyboard.
+
+2.	The drivers will register themselves to the operating system, and when the
+user wants to access a device, it will be the operating systems job to call the
+correct drive.
+
+3.	All of the drivers must have a `struct dev_operations' structure which
+contains function pointers that handle basic device tasks, like reading and
+writing to the device.
+
+4.	Drivers must not use a blocking call within IRQ handlers (if any needed)
+
+5.	The number of device drivers will not be limited to physical devices
+connected to the computer. There will be drivers for `file system',
+`terminal/console' etc.
+
+6.	Few of the drivers like the filesystem and keyboard drivers will be
+loaded/registered with the operating system at startup by the laoder.

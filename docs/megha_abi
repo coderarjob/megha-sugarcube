@@ -1,0 +1,103 @@
+Application Binary Interface
+----------------------------
+														Dated: 10th Aug 2019
+														Version: 0.1 (10819)
+
+Appliication Binary Interface is a document that deals with the following:
+* Processor Instruction set
+
+* Procedure/Function calling convention: How data will be passed into and out
+                                         of a function.
+* System call calling convention
+
+* What are the files in the Operating system and what are its functions?
+
+* Basic data types understood by the kernel function calls and system calls.
+
+* Allignment requirements
+
+
+----------------------------------------------------------------------------
+Processor Instruction Set:
+----------------------------------------------------------------------------
+Megha targets 8086 processor. Any CPU Instruction or memory type that was not
+part of the 8086 is not allowed. This can be checked by the presence of prefix
+bytes 66 (Operator override prefix) or 67 (address override prefix).
+
+So we only use General Purpose Registers 
+	AX [AH, AL], BX, CX, DX SI, DI and 
+Segment registers
+	DS, SS, CS and ES.
+
+Note: Current version of MOS is not complient with this requirement, as GS 
+and IMUL instruction is sometimes used in the code.
+
+----------------------------------------------------------------------------
+Procedure/Function calling convention:
+----------------------------------------------------------------------------
+Arguments will be pushed into the stack. 
+If the function defination is the following:
+	int add_two(int a, int b);
+	int sum = add_two(4,9);
+
+Then parameters will be pushed into the stack from the right. Thus, argument
+'9' will be pushed first. 
+	push 9
+	push 4
+	call add_two
+
+The return value will be in AX, if 16 bits; and AX:DX if 32 bits (AX have the
+low word, and DX the high word)
+
+All the registers, expect BX is callee saved.
+
+Do not know why c standard calling model do the following:
+	The registers AX, CX and DX are caller saved, where as BX, SI, DI, ES are 
+	callee caved.
+
+----------------------------------------------------------------------------
+System call calling convention:
+----------------------------------------------------------------------------
+Arguments are passed from left-to-right in registers in the order AX, BX, CX,
+DX, SI, DI. 
+
+Return values is in 
+	* BX in case of 16 bit and 
+	* ES:BX in case of far pointer and
+	* AX:BX in case of 32 bit value (AX has the higher word). 
+
+The function number is provided in BX as well.
+The reason AX is not used, is simply to keep the dispatcher code simple due to
+the fact that only BX and BP can be used in Effective Addressing in 8086.
+
+CX, DX, SI, DI, DS, (GS if used) registers are callee saved (the system
+call/despatcher). AX, BX, and ES are caller saved.
+
+Why not pass system call arguments via the stack? 
+
+Disadvantages of using the stack:
+	1. Little extra work. 
+	   - Setup BP properly
+	   - Refer variables from memory relative to BP
+	   - Restore SP, BP in the end.
+	2. Extra code means extra work to debug.
+	3. Use of registers is a lot faster.
+	
+Advantages of using the stack:
+	1. Consistant calling convention.
+	2. Any length of arguments can be passed to the system call.
+
+Example call using the stack:
+	push 0				; Write to standard out.
+	push buffer			; Bytes that needs to be written
+	push buffer_len		; Number of bytes to be written.
+	push 1				; function number to call, in this case write syscall
+	int 0x40
+
+Same call using registers
+	mov ax, 1			; function to call. Write system call in this case.
+	mov bx, 0			; write to stdout
+	mov cx, buffer		; bytes to write
+	mov dx, buffer_len	; number of bytes to write
+	int 0x40
+

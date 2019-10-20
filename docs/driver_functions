@@ -1,0 +1,38 @@
+
+Inside kbd.drv
+	1. Interrupt handler routine (must also control the LEDs & CTRL+ALT+DEL)
+	2. Queue for holding key pressed
+
+		|----------|---------|---------|
+		|Shift (2) |         |         |
+		|ALT (2)   |         |         |
+		|CTRL(2)   |Key Code |Scan code|
+		|CAPS(1)   |   8     |   8     |
+		|NUM(1)    |         |         |
+		|----------|---------|---------|
+	3.Read method to read x entries from the queue
+	4. config method to configure keyboard, like turining On and Off of LEDs
+	5. Converts scan codes to system independent Key Codes.
+	6. Sould CTRL+ALT+DEL generate a signal and OS can handle it? No because in
+	case the OS hangs, one cannot do system reset.
+
+Inside con.drv [ Console driver ]
+	1. Has a read method that reads from the keyboard driver.
+	2. Has a write method that writes to the VGA.
+	3. Has a config methof that can be used to configure a set of supported
+	options in VGA and send configuration commands to keyboard drivers.
+	4. Reading from the keybaord will consult a 'CodePage' to convert
+	'keycodes' from the keybaord to 'ASCII' or 'any other format'. Changing of
+	CodePage will be an option supported in the config method.
+	5. Note that functions like getchar is not part of console driver. These
+	will be library functions.
+	6. Will interpret special key combinations like Ctrl+D for EOF, and Ctrl+C
+	for KILL and take appropriate actions.
+		* EOF (0xFF) will be sent as an character from the write function.
+		* KILL signal will be sent to the registered application, and it will
+		take appropriate actions.
+	7. Programs can register with console to recieve signals (or console 
+	may write to a signal queue (via a system call of the kernel), and the 
+	kernel can dispatch the signal to the programs that have registered (again
+	via another kernel system call) to receive the signal.)
+
