@@ -1,4 +1,4 @@
-#MEGHA OPERATING SYSTEM SUGARCUBE                                  INTRODUCTION
+# MEGHA OPERATING SYSTEM SUGARCUBE                                  INTRODUCTION
 
 This version of Megha Operating System is more for the proof of concept. Many
 modules like the VFS exist for the namesake, and many more features like
@@ -10,7 +10,7 @@ for Jayati before our marriage day.
 
 Wish me Luck!
 
-##Features available in Sugarcube:
+## Features available in Sugarcube:
 
 1. Console module, for outputting text on the screen.
 2. FAT12 file system with the system calls for opening, reading and writting.
@@ -22,7 +22,7 @@ Wish me Luck!
 8. Many modules like the Console, terminal, VFS, even tough available in
    Sugarcube, are not the final versions and will lac many features.
 
-##Features exclusive to Sugarcube:
+## Features exclusive to Sugarcube:
 
 1. Will have one mount point for the floppy using the FAT12 file system.
 2. VFS mount, and umount is not available, but vfs_open, vfs_read, vfs_write,
@@ -30,7 +30,7 @@ Wish me Luck!
 3. A program called JAYATI for our special night.
 
 
-##Features not available in Sugarcube:
+## Features not available in Sugarcube:
 
 1. DEVFS, so devices can be treated as files.
 2. VFS, ability of open, read and write files seemlessly between different
