@@ -14,14 +14,15 @@ Wish me Luck!
 Features available in Sugarcube:
 --------------------------------
 
-1. Console module, for outputting text on the screen.
-2. FAT12 file system with the system calls for opening, reading and writting.
-3. An command interpretter.
+1. Console module, for displaying text on the screen.
+2. FAT12 file system with the system calls for opening, reading and writing.
+3. An command interpreter.
 4. A functional keyboard driver with type ahead features and code pages.
 5. A simple sound driver, capable of pitch change and producing sound.
-6. Few simple programs:- cat, dir, echo.
-7. Modules:- Guru, Despatcher, Console, Sound, KDB, MKRNL
-8. Many modules like the Console, terminal, VFS, even tough available in
+6. A 8251 PIT driver.
+7. Few simple programs:- cat, dir, echo.
+8. Modules:- Guru, Despatcher, Console, Sound, KDB, MKRNL
+9. Many modules like the Console, terminal, VFS, even tough available in
    Sugarcube, are not the final versions and will lac many features.
 
 Features exclusive to Sugarcube:
@@ -41,5 +42,5 @@ Features not available in Sugarcube:
    devices and different file systems.
 3. Ability to mount devices.
 4. Extensibe driver model:- Ability to have hook methods etc.
-5. Multiple application programs like edittor, mount etc.
+5. Multiple application programs like editor, mount etc.
 

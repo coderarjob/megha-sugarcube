@@ -1,0 +1,40 @@
+
+MEGHA OPERATING SYSTEM SUGARCUBE 
+- DRIVER MODEL
+- Dated: 21 Oct 2019
+
+----------------------------------------------
+
+A driver in MOS Sugarcube is a normal module that can be loaded by the OS
+loader or at a later time when interpreter is loading.
+
+The Sugarcube is a very simple operating system and so many of the below
+features will not be available.
+
+A driver will communicate with the rest of the system using software defined
+interrupts that can be called using the depatcher. Many of the drivers will
+have well defined interrupts, even tough nothing is set in stone - If any
+driver wants to register its routines with a different IVT then OS will not
+stop it. However such drivers will need special programs that will know the
+interrupt numbers and can interract with it.
+
+Take for example the Keyboard driver:
+ - 3 interrupts will be defined, one for reading and writting, and another for
+   configuring the keyboard.
+ - Any application/module that wished to read from the keyboard will use one of
+   the 3 intterupts.
+
+In keeping with the design goals of the MOS Sugarcube, there will be no
+advanced features that we take for granted these days with Linux and Windows.
+Drivers will be a integral part of the Operating System - however one driver
+can be swapped for another if necessory.
+
+Drivers that will be part of the Operating System:
+Keyboard, 8254, Terminal
+
+The Terminal driver is a psudo driver that will
+ - Read from the keyboard (using the keyboard driver software interrupt
+   routines)
+ - Write to the VGA text memory.
+ - Configure the Cursor position and cursor layout.
+

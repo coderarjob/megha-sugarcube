@@ -10,18 +10,15 @@
 pushd src/bootloader
 	echo "=== Compilling bootloader ==="
 	nasm -f bin boot.s -g -o ../../build/boot -l ../../lists/boot.lst|| exit
-
-	echo "=== Compilling loader ==="
-	nasm -f bin loader.s -g -o ../../build/loader -l ../../lists/loader.lst|| exit
 popd
 
-pushd src/modules
+pushd src/kernel
+	echo "=== Compilling loader ==="
+	nasm -f bin loader.s -g -o ../../build/loader -l ../../lists/loader.lst|| exit
 	echo "=== Compilling guru.mod ==="
-	nasm -f bin guru/guru.s  -o ../../build/modules/guru.mod -l ../../lists/guru.lst||exit
-	echo "=== Compilling kernel.mod ==="
-	nasm -f bin kernel/kernel.s  -o ../../build/modules/kernel.mod -l ../../lists/kernel.lst || exit
+	nasm -f bin guru.s  -o ../../build/modules/guru.mod -l ../../lists/guru.lst||exit
 	echo "=== Compilling despchr.mod ==="
-	nasm -f bin despatcher/despatcher.s  -o ../../build/modules/despchr.mod -l ../../lists/despatcher.lst || exit
+	nasm -f bin despatcher.s  -o ../../build/modules/despchr.mod -l ../../lists/despatcher.lst || exit
 popd
 
 
@@ -35,10 +32,8 @@ echo "=== Copy needed files to the floppy image ==="
 runas mount disk_images/boot.flp temp || exit
 
 # Copy the files needed to the floppy
-echo "=== Copy ossplash.bin ==="
-runas cp bitmaps/bins/megha_boot_image_v2.data temp/ossplash.bin || exit
+echo "=== Copy files to floppy ==="
 runas cp build/loader temp/loader || exit
-runas cp build/modules/kernel.mod temp/kernel.mod || exit
 runas cp build/modules/guru.mod temp/guru.mod || exit
 runas cp build/modules/despchr.mod temp/despchr.mod || exit
 
