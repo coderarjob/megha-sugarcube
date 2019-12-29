@@ -1,0 +1,10 @@
+
+normal keys -> is not effected by other key press. Example: TAB, CAPS LOCK, NUM
+LOCK, ARROW KEYS, Backspace, Enter, Function keys
+
+Shift effected keys -> A to Z, 1-9, 0, -, +, [, ], ;, ', comma, ., /, \, DEL,
+Control
+Caps lock effected keys -> A to Z
+Num lock effected keys -> Number pad keys: 7, 8, 9, 4, 6, 1, 2, 3, 0, .
+Contro effected keys -> DEL, SHIFT
+DEL effected keys -> Control, Shift

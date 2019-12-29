@@ -1,0 +1,110 @@
+-----------------------------------------------------
+Megha Operating System - Sugarcube version
+Work Log
+-----------------------------------------------------
+
+Date: 16th Dec 2019
+The update as of today is that, I have the Keyboard driver ready with an
+internal keepahead queue. Initially I tought that I would have the queue in the
+terminal module, based on if input buffer is turned on. Details are below.
+
+The initial goal was to have 3 queues
+	1. LINE buffer:	This is the place where keys (4 bytes from each key press)
+					are kept untill ENTER is detected. On ENTER all the bytes
+					from this buffer is enqeued to the IN Queue.
+					Some line processing will also be done here:
+					 	* Handling Backspace
+						* CTRL + C to terminate the current program.
+						* CTRL + H for backspace again.
+						* A subset of the ANSI escape sequence.
+					We would also write each of the keys and its effects on the
+					screen. Yes Backspace need to be implemented in here as
+					well as in term_vga routines.
+
+	2. IN queue:	This is what is read when user programs wants to read from
+					the keyboard. If input buffering is OFF, 4 bytes from the
+					keyboard driver gets enqueued in this buffer. If however,
+					buffering is ON, bytes (each keypress produces 4 bytes)
+					from key presses (we do not keep release events) are stored
+					in the LINE buffer until ENTER is pressed or the LINE
+					buffer is full.
+	3. OUT queue:	If output buffering is enabled, we keep the bytes (single
+					byte per character) until an LF character is detected. When
+					an LF character is detected, we do the following:
+						* Dequeue the whole buffer and put it in a linear
+						  memory area, as out queue uses a circular queue.
+						  (Unfortunate).
+						* We pass a pointer to this linear memory area to
+						  term_vga routine to dump it on the VGA memory and
+						  process some escape characters on its way.
+ALGORITHM:
+	queue in, out;
+	char line[100];
+	int position, 		// This holds the index in `line' where the next
+						// character should be placed. This is not necessorily
+						// be at the end of entered buffer, as user may have
+						// repositioned it using the ARROW keys. 
+		length,			// Number of keys in the line.
+		cursor_row,
+		curosr_col;
+	void addKeyPress(char[4] key)
+	{
+		if (input_buffer_enabled)
+			line_processor(key);
+		else
+			enqueue(in, key);
+	}
+
+	void line_processor(char[4] key)
+	{
+		if (length > 100)
+			dump()
+		else if (length = 0)
+		{
+			cursor_row = vga_get_cursor_row();
+			cursor_col = vga_get_cursor_column();
+		}
+
+		// Add to the buffer
+		memcpy(line(4 * position), key)
+		position++;
+		length++;
+
+		if (key[2] == 10)		// ASCII of the key press. 10 = LF
+			dump();
+		else if(key[2] == ARROW_LEFT)
+			; Move Cursor one to the left
+
+		// Display on to the screen
+		int cursor_now = cursor_col + length;
+
+		// Move cursor to the beginning of the line. We are redrawing part of
+		// the current row. We are starting from the column where the first
+		// character resides.
+		vga_set_cursor_position(cursor_row, cursor_column);
+
+		// Write all the characters to VGA and interpret special characters.
+		term_vga(line,length);
+
+		// Restore the cursor position.
+		vga_set_cursor_position(cursor_row, cursor_now);
+	}
+
+	void dump()
+	{
+		for (int i = 0; i < length; i++)
+			enqueue(in, line(4 * i))
+
+		length = 0;
+		position = 0;
+	}
+PROBLEM:
+	Time is running out. As much I want to implement this feature, I neither
+	have the time to develop or to debug. The tools I have currently for
+	debugging say a wrong pointer value is just my head.
+
+CONCLUSION:
+	I am changing the Megha Sugarcube again. Terminal will always be in the RAW
+	mode i.e INPUT Buffering is always OFF.
+	The effect is that features like CTRL + C to terminate a program is not
+	going to work. This is sad.

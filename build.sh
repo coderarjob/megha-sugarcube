@@ -19,6 +19,13 @@ pushd src/kernel
 	nasm -f bin guru.s  -o ../../build/modules/guru.mod -l ../../lists/guru.lst||exit
 	echo "=== Compilling despchr.mod ==="
 	nasm -f bin despatcher.s  -o ../../build/modules/despchr.mod -l ../../lists/despatcher.lst || exit
+	#echo "=== Compilling kernel.mod ==="
+	#nasm -f bin kernel.s  -o ../../build/modules/kernel.mod -l ../../lists/kernel.lst || exit
+popd
+
+pushd src/devices
+	echo "=== Compilling 8254 driver ==="
+	nasm -f bin 8254.s -g -o ../../build/modules/pit.mod -l ../../lists/pit.lst || exit
 popd
 
 
@@ -35,7 +42,11 @@ runas mount disk_images/boot.flp temp || exit
 echo "=== Copy files to floppy ==="
 runas cp build/loader temp/loader || exit
 runas cp build/modules/guru.mod temp/guru.mod || exit
+#runas cp build/modules/kernel.mod temp/kernel.mod || exit
 runas cp build/modules/despchr.mod temp/despchr.mod || exit
+runas cp build/modules/pit.mod temp/pit.mod || exit
+#runas cp ~/asm/projects/megha/demo/keyboard/key.mod temp/key.mod || exit
+#runas cp ~/asm/projects/megha/demo/vga/vga.mod temp/vga.mod || exit
 
 # Unmount the image
 echo "=== Copy of files done. Unmounting image ==="

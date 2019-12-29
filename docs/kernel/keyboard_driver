@@ -1,0 +1,89 @@
+------------------------------------------------------------------------------
+Megha Operating System - Sugarcube
+ - Keyboard driver responsibilites and design
+ - 26th October 2019
+------------------------------------------------------------------------------
+
+I do not know why is it so much of a challenge to take a decision. So when it
+comes to the keyboard driver, I had two choice:
+
+	1. Keep the driver simple and just return a system independent key code
+	with the corresponding scan codes with a status of a few keys. A secondary 
+	module in the OS will read from the keyboard queue (when called from a user 
+	program) (this will later be done by a hook method) and provide a proper 
+	ASCII equivallent from the key code and the state of the few keys on the 
+	computer.
+	* CTRL + ALT + DEL will still be handled by the keyboard driver for now.
+	  Later on a hook method will do this.
+	* LEDs on the keyboard will still be handled by the keyboard.
+
+	2. The keyboard driver will interpret the combination of keys that are
+	pressed and provide a key code for all such combinations. So it is the
+	drivers job to determine if SHIFT key would produce an alternate case, not
+	the OS. The idea is that if there is a different keyboard, we use a
+	different driver. All the features that the keyboard has, must come from 
+	the keyboard driver. OS just sees the keycodes and nothing else. An extra
+	module is still needed for translation of Key codes to ASCII, but the
+	work of interpretting is already done by the driver
+
+	-------------------------------------------------------------------------
+	Case 1: I want to simulate a DEVORAK keyboard on my QWERTY keyboard
+	-------------------------------------------------------------------------
+
+		CHOICE 1: We write a new translation logic that takes in the keycodes
+		and outputs ASCII but as if using a devorak keyboard. Same driver is
+		used here.
+
+		CHOICE 2: We would need a similar tranlation logic same as before.
+
+	-------------------------------------------------------------------------
+	Case 2:	SHIFT + 3, on a keybord has $ instead of #. You want the OS to
+	        display a $ when pressed SHIFT + 3, not #.
+	-------------------------------------------------------------------------
+
+		CHOICE 1: Have a new translation logic that maps SHIFT + 3 to '$'
+		instead. Driver remains the same.
+
+		CHOICE 2: Have a different driver that already gives the proper output,
+		or just like before keep the existing driver and write a translation
+		logic.
+	
+	-------------------------------------------------------------------------
+	Case 3: We want to lock the system when CTRL + ESC key is pressed. 
+	-------------------------------------------------------------------------
+
+		CHOICE 1: No easy way to implement, as the translator module is only
+		called when the application wants to read from the keyboard. However if
+		implemented using the hook method, features like this will be
+		implemeted easily (either by writing hard logic, or reading a text file
+		that shows which application should execute when a set of keys are
+		pressed - In this case, CTRL + ESC keys when pressed at a time should
+		call a program named LOCK)
+
+		CHOICE 2: Again no way to implement it into the translation module, not
+		before hook methods are used. This feature can however be implemented
+		in the driver. BTW, we could have writted a driver in the above case as
+		well, but that would violate the principle on which CHOICE 1 stands (to
+		keep only the keyboard necessory stuff in the driver, all the other
+		things/features should come from the operating system.)
+
+	-------------------------------------------------------------------------
+	
+Anyways, it seems at this stage, that the CHOICE 1 and CHOICE 2 is not that
+different. CHOICE 2 splits the translation logic - some parts are done in the
+driver and some in the operating system. CHOICE 1 keeps all the traslation
+logic to the Operating System.
+
+I think I would go with CHOICE 1. Here are the reasons:
+	1. There is no clear benifit of splitting the translation logic between the
+	   keyboard and the Operating System. If anything it may make changing
+	   translation logic more challenging.
+	2. Keeping all of the translation logic would sort of separate the drivers
+	   (as it may come from different manufacturers) from the Operating System.
+
+-------------------------------------------------------------------------
+CONCLUSION:
+-------------------------------------------------------------------------
+So it is decided now, Simple Keyboard drivers it is in Megha OS Sugarcube.
+
+END

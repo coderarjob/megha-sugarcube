@@ -1,6 +1,32 @@
 MEGHA OPERATING SYSTEM SUGARCUBE                                  INTRODUCTION
 --------------------------------                                  ------------
 
+The Sugarcube is a simple Operating System that only deals with the very basics
+of features. Think of it as the first version of DOS. Based on x86 processor,
+it is capable of becoming a very complex Operating System, but at this stage, I
+want to keep it very simple and build on the knowledge gained in my later
+software projects.
+
+Design Goals:
+---------------------------
+
+1. Only thoes features should exist that we cannot do without.
+2. FAT12 file system that is capable of 
+   - Creating new files 
+   - Reading (some bytes from random locations) from existing files.
+   - User can keep multiple files open and read, write system calls must work
+	 with one provided by the user.
+3. A basic command interpretter
+   - Opening a program into memory.
+   - Parameters to programs
+   - Redirection operatiors
+4. Terminal 
+   - Can handle CR, LF, backspace and some other special characters.
+   - Color text support on VGA displays.
+   - Ability to move cursor around screen.
+5. Keyboard and 8254 PIT drivers
+6. Basic Sound
+
 This version of Megha Operating System is more for the proof of concept. Many
 modules like the VFS exist for the namesake, and many more features like
 'mountable file systems' etc, simply do not exist.
@@ -43,4 +69,5 @@ Features not available in Sugarcube:
 3. Ability to mount devices.
 4. Extensibe driver model:- Ability to have hook methods etc.
 5. Multiple application programs like editor, mount etc.
+
 

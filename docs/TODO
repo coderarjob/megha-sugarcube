@@ -1,0 +1,12 @@
+MEGHA OPERATING SYSTEM SUGARCUBE                                     TODO LIST
+--------------------------------                                     ----------
+
+Date:	29th Dec 2019 
+
+Status	Description							Duration		Complete By
+------  ----------------------------------  -------------   ---------------
+[ ]		8254 Driver							4 hours			29 Dec 2019
+[ ] 	Basic INT0 interrupt routine		2 hours			29 Dec 2019
+[ ]		Linked List POC						4 Hours			30 Dec 2019
+[ ]     system queue add routine			2 Hourrs		31 Dec 2019
+[ ]		File system Routines (file.s)		12 Hours		3  Jan 2020

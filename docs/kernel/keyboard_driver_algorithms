@@ -1,0 +1,132 @@
+flags: NUM, CAPS, SHIFT, CTRL, ALT, EXTENDED, PRESSED
+
+in al, 0x60
+
+if sc = 0xE0 then
+	extended = 1
+	sc = read_kbd
+						cmp al, 0xE0
+						jne .n1
+
+						or [.flags], EXTENDED
+						in al, 0x60
+
+						.n1:
+
+if sc & 0x80 = 0x80 then
+	pressed = 0
+	sc = sc & ~0x80
+else
+	pressed = 1
+						mov ah, al
+						and al, 0x80
+						jz .n2
+
+						or [.flags], PRESSED
+						mov al, ah
+
+						.n2:
+if sc = shift_sc then
+	if pressed = 1 then
+		flags = flags | SHIFT
+	else
+		flags = flags & ~SHIFT
+						
+						cmp al, SHIFT_SC
+						jne .n3
+
+						test [.flags], PRESSED
+						jz .n3
+
+						or [.flags], SHIFT
+
+						.n3:
+if sc = ctrl_sc then 
+	if pressed = 1 then
+		flags = flags | CTRL
+	else
+		flags = flags & ~CTRL
+
+if sc = alt_sc then
+	if pressed = 1 then
+		flags = flags | ALT
+	else
+		flags = flags & ~ALT
+
+if sc = caps_sc then
+	switch (caps_state)
+		case 0:
+			if pressed = 1 then 
+				caps_state = 1
+				flags = flags | CAPS
+				leds = leds | CAPS_LED
+		case 1:
+			if pressed = 0 then 
+				caps_state = 2
+		case 2:
+			if pressed = 1 then 
+				caps_state = 3
+				flags = flags & ~CAPS
+				leds = leds & ~CAPS_LED
+		case 3:
+			if pressed = 0 then 
+				caps_state = 0
+
+if sc = nums_sc then
+	switch (caps_state)
+		case 0:
+			if pressed = 1 then 
+				caps_state = 1
+				flags = flags | NUM
+				leds = leds | NUMS_LED
+		case 1:
+			if pressed = 0 then 
+				caps_state = 2
+		case 2:
+			if pressed = 1 then 
+				caps_state = 3
+				flags = flags & ~NUM
+				leds = leds & ~NUMS_LED
+		case 3:
+			if pressed = 0 then 
+				caps_state = 0
+
+								cmp al, nums_sc
+								jne .end
+
+								mov bx, [caps_state]
+								imul bx, 2
+								jmp [.jtable1 + bx]
+
+					nums_case0:
+								test [.flags], PRESSED
+								jz .end
+
+								mov [caps_state], 1
+								or flags, NUM
+								or leds, NUMS_LED
+								jmp .end
+					nums_case1:
+								test [.flags], PRESSED
+								jnz .end
+
+								mov [caps_state], 2
+					nums_case2:
+								test [.flags], PRESSED
+								jz .end
+
+								mov [caps_state], 3
+								and flags, ~NUM
+								and leds, ~NUMS_LED
+								jmp .end
+					nums_case3:
+								test [.flags], PRESSED
+								jnz .end
+
+								mov [caps_state], 0
+								jmp .end
+								
+			.jtable1: nums_case0, nums_case1, nums_case2, nums_case3
+	.end:
+	extended = 0
+
