@@ -1,6 +1,6 @@
 ; Megha OS Loader
 ; Loades different programs/modules into memory and calls the _init routine.
-; Version: 0.21 (130819)
+; Version: 0.22 (161119)
 ;
 ; Initial version was 0.2
 ;
@@ -11,7 +11,7 @@
 ;   (The letter capital M).
 ;
 ; -------------------------
-; Changes in Version 0.2
+; Changes in Version 0.21
 ; -------------------------
 ; * Loads multiple files/modules mentioned in fat_files location.
 ;
@@ -38,6 +38,15 @@
 ; * Includes a file called 'mos.inc'. This file lists versions of all the
 ;   different modiles in the operating system, and different function numbers
 ;   that can be called via each of the software interrupts of the OS.
+;
+; -------------------------
+; Changes in Version 0.22
+; -------------------------
+; * We call AddToModuleList before calling the _init routine of the loaded 
+;   module. This is done so that we can get the segment of the current module
+;	for debugging, if the _init routine did not return, or we want a breakpoint 
+;	in the _init routine.
+; * Removed '.section data', as it resulted in wrong size of the output binary.
 
 	; ******************************************************
 	; MACRO AND STRUCTURE BLOCK
@@ -119,15 +128,15 @@ _init:
 	cmp ax, 0
 	je failed_file_not_found
 
+	; Add to the module list
+	AddToModuleList [_init_addr+2]
+
 	; call the _init routine of the loaded module
 	push ds
 		push 0		; argument count, there are none
 		    call far [_init_addr] 
 		sub sp, 2	; adjust for the push 0
 	pop ds
-
-	; Add to the module list
-	AddToModuleList [_init_addr+2]
 
 	; print 'loading complete message'
 	printString msg_file_loaded
@@ -146,29 +155,39 @@ _init:
 .load_end:
 	
 	; clear the screen
-	mov bx, GURU_CLEARSCREEN
-	int 0x41
+	;mov bx, GURU_CLEARSCREEN
+	;int 0x41
 
 	; Print hello world
-	mov bx, GURU_PRINTSTRING 
-	mov ax, hello
-	int 0x41
+	;mov bx, GURU_PRINTSTRING 
+	;mov ax, hello
+	;int 0x41
 
 	; print a number in hex format
-	mov bx, GURU_PRINTHEX
-	mov ax, 0xfa45
-	mov cx, 16
-	int 0x41
+	;mov bx, GURU_PRINTHEX
+	;mov ax, 0xfa45
+	;mov cx, 16
+	;int 0x41
 
-	mov bx, GURU_HEXDUMP
-	xor ax, ax
-	mov dx, 0x0
-	mov cx, 0x40
-	int 0x41
-
-	mov bx, DS_ADD_ROUTINE
-	mov ax, 0xFF
+	mov bx, PIT_SET_COUNTER
+	mov ax, 2
+	mov cx, 0x4A8
+	mov dx, 3
 	int 0x40
+
+	mov bx, PIT_SET_GATE
+	mov ax, 1
+	int 0x40
+
+	;mov bx, GURU_HEXDUMP
+	;xor ax, ax
+	;mov dx, 0x0
+	;mov cx, 0x40
+	;int 0x40
+
+	;mov bx, DS_ADD_ROUTINE
+	;mov ax, 0xFF
+	;int 0x40
 
 	;mov bx, GURU_CLEARSCREEN
 	;int 0x41
@@ -186,27 +205,32 @@ exit:
 	jmp $
 
 ; ================ Included files =====================
-section .data
 
 %include "../include/mos.inc"
-%include "../include/mda.inc"
 
 dummy_str: db 'Arjob Mukherjee',0
 ; ================ Data for loader =====================
-fat_files:   db 'GURU    MOD'
-	     db 'DESPCHR MOD'
-	     db 'KERNEL  MOD'
-             ;db 'IO      DRV'
-             db 0
+fat_files:   
+         db 'GURU    MOD'
+		 db 'DESPCHR MOD'
+		 db 'PIT     MOD'
+	     ;db 'KERNEL  MOD'
+         ;db 'IO      DRV'
+		 ;db 'KEY     MOD'
+		 ;db 'VGA     MOD'
+         db 0
 
-_init_addr: dw 	 0x64
-            dw   0x840 ;MODULE0_SEG
+_init_addr: dw 	 MODULE0_OFF
+            dw   MODULE0_SEG
 
 ; ================ Text messages =======================
 friendly_filenames: db 10,13," guru.mod...",0
-		    db 10,13," despchr.mod",0
-		    db 10,13," kernel.mod.",0
-		    db 10,13," io.drv.....",0
+					db 10,13," despchr.mod",0
+					db 10,13," pit.mod....",0
+					;db 10,13," kernel.mod.",0
+					;db 10,13," io.drv.....",0
+					;db 10,13," key.mod....",0
+					;db 10,13," vga.mod....",0
 
 msg_file_loaded:    db "   Done",0
 msg_file_not_found: db "   Not found",0
@@ -227,7 +251,7 @@ msg_loader_welcome: db 10,13,10,13
 hello: db "Showing this message using a debug.mod routine.",13,10
        db "Result: 0x",0
 ; ================ ZERO PADDING =======================
-times 768 - ($ - $$) db 0
+times 768 - ($-$$) db 0
 
 
 

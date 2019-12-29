@@ -1,0 +1,70 @@
+!_TAG_FILE_FORMAT	2	/extended format; --format=1 will not append ;" to lines/
+!_TAG_FILE_SORTED	1	/0=unsorted, 1=sorted, 2=foldcase/
+!_TAG_PROGRAM_AUTHOR	Darren Hiebert	/dhiebert@users.sourceforge.net/
+!_TAG_PROGRAM_NAME	Exuberant Ctags	//
+!_TAG_PROGRAM_URL	http://ctags.sourceforge.net	/official site/
+!_TAG_PROGRAM_VERSION	5.8	//
+K_MAIN_QUEUE	io.s	/^K_MAIN_QUEUE:$/;"	l
+K_NOTIFICATION_LIST	io.s	/^K_NOTIFICATION_LIST: resb K_NOTIFICATION_ITEM_SIZE * K_MAX_NOTIFICATION_COUNT $/;"	l
+__notify_all	io.s	/^__notify_all:$/;"	l
+__sys_addRoutine	despatcher.s	/^__sys_addRoutine:$/;"	l
+_cr	guru.s	/^_cr:$/;"	l
+_despatcher	guru.s	/^_despatcher:$/;"	l
+_init	guru.s	/^_init:$/;"	l
+_init	kernel.s	/^_init:$/;"	l
+_init	loader.s	/^_init:$/;"	l
+_init_addr	loader.s	/^_init_addr: dw 	 MODULE0_OFF$/;"	d
+_lf	guru.s	/^_lf:$/;"	l
+_printhex	guru.s	/^_printhex:$/;"	l
+_putchar	guru.s	/^_putchar:$/;"	l
+callvector	guru.s	/^callvector: dw printhex,copy_to_screen,clear,hexdump$/;"	d
+clear	guru.s	/^clear:$/;"	l
+copy_to_screen	guru.s	/^copy_to_screen:$/;"	l
+dec	guru.s	/^		dec dx$/;"	d
+despatcher_init	despatcher.s	/^despatcher_init:$/;"	l
+dummy_str	loader.s	/^dummy_str: db 'Arjob Mukherjee',0$/;"	d
+endstruc	guru.s	/^endstruc$/;"	l
+exit	loader.s	/^exit:$/;"	l
+failed_file_not_found	loader.s	/^failed_file_not_found:$/;"	l
+fat_files	loader.s	/^fat_files:   $/;"	l
+fatal_error	loader.s	/^fatal_error:	    db "Cannot continue. Fatal error.",0$/;"	d
+friendly_filenames	loader.s	/^friendly_filenames: db 10,13," guru.mod...",0$/;"	d
+hello	loader.s	/^hello: db "Showing this message using a debug.mod routine.",13,10$/;"	d
+hexdump	guru.s	/^hexdump:$/;"	l
+inc	guru.s	/^		inc di$/;"	d
+invalid_routine_number_msg	despatcher.s	/^invalid_routine_number_msg: db ";( addRoutine (despatcher). Routine number is "$/;"	d
+msg_file_loaded	loader.s	/^msg_file_loaded:    db "   Done",0$/;"	d
+msg_file_not_found	loader.s	/^msg_file_not_found: db "   Not found",0$/;"	d
+msg_loader_welcome	loader.s	/^msg_loader_welcome: db 10,13,10,13$/;"	d
+panic	guru.s	/^panic:$/;"	l
+pop	despatcher.s	/^		pop ds$/;"	d
+pop	despatcher.s	/^	pop di$/;"	d
+pop	despatcher.s	/^	pop ds$/;"	d
+pop	despatcher.s	/^	pop dx$/;"	d
+pop	guru.s	/^		pop di$/;"	d
+pop	guru.s	/^	    pop di$/;"	d
+pop	guru.s	/^	pop di$/;"	d
+pop	guru.s	/^	pop ds$/;"	d
+pop	guru.s	/^	pop dx$/;"	d
+pop	io.s	/^	pop dx$/;"	d
+pop	loader.s	/^	pop ds$/;"	d
+printString	loader.s	/^	printString di$/;"	d
+printhex	guru.s	/^printhex:$/;"	l
+push	despatcher.s	/^	push di$/;"	d
+push	despatcher.s	/^	push ds$/;"	d
+push	despatcher.s	/^	push dx$/;"	d
+push	guru.s	/^		push di$/;"	d
+push	guru.s	/^	    push di$/;"	d
+push	guru.s	/^	push di$/;"	d
+push	guru.s	/^	push ds$/;"	d
+push	guru.s	/^	push dx$/;"	d
+push	io.s	/^	push dx$/;"	d
+push	loader.s	/^	push ds$/;"	d
+struc	guru.s	/^struc params,2$/;"	l
+struc	guru.s	/^struc reg,2$/;"	l
+sys_addRoutine	despatcher.s	/^sys_addRoutine:$/;"	l
+sys_despatcher	despatcher.s	/^sys_despatcher:$/;"	l
+sys_io_add_system_message	io.s	/^sys_io_add_system_message:$/;"	l
+sys_io_get_system_message	io.s	/^sys_io_get_system_message:$/;"	l
+times	loader.s	/^times 768 - ($-$$) db 0$/;"	l
+vga_offset	guru.s	/^vga_offset: dw  0$/;"	d
