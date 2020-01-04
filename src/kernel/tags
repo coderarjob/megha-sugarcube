@@ -4,14 +4,18 @@
 !_TAG_PROGRAM_NAME	Exuberant Ctags	//
 !_TAG_PROGRAM_URL	http://ctags.sourceforge.net	/official site/
 !_TAG_PROGRAM_VERSION	5.8	//
-K_MAIN_QUEUE	io.s	/^K_MAIN_QUEUE:$/;"	l
-K_NOTIFICATION_LIST	io.s	/^K_NOTIFICATION_LIST: resb K_NOTIFICATION_ITEM_SIZE * K_MAX_NOTIFICATION_COUNT $/;"	l
-__notify_all	io.s	/^__notify_all:$/;"	l
+IN_CONFIG	terminal.s	/^IN_CONFIG: 	db 1$/;"	d
+IN_QUEUE	terminal.s	/^IN_QUEUE:$/;"	l
+OUT_CONFIG	terminal.s	/^OUT_CONFIG: db 1$/;"	d
+OUT_QUEUE	terminal.s	/^OUT_QUEUE:$/;"	l
+POSITION	terminal.s	/^POSITION:						; -- INVARIANTS --$/;"	l
+__init	kernel.s	/^__init:$/;"	l
 __sys_addRoutine	despatcher.s	/^__sys_addRoutine:$/;"	l
+__term_write_vga	terminal.s	/^__term_write_vga:$/;"	l
 _cr	guru.s	/^_cr:$/;"	l
 _despatcher	guru.s	/^_despatcher:$/;"	l
+_init	despatcher.s	/^_init:$/;"	l
 _init	guru.s	/^_init:$/;"	l
-_init	kernel.s	/^_init:$/;"	l
 _init	loader.s	/^_init:$/;"	l
 _init_addr	loader.s	/^_init_addr: dw 	 MODULE0_OFF$/;"	d
 _lf	guru.s	/^_lf:$/;"	l
@@ -21,18 +25,19 @@ callvector	guru.s	/^callvector: dw printhex,copy_to_screen,clear,hexdump$/;"	d
 clear	guru.s	/^clear:$/;"	l
 copy_to_screen	guru.s	/^copy_to_screen:$/;"	l
 dec	guru.s	/^		dec dx$/;"	d
-despatcher_init	despatcher.s	/^despatcher_init:$/;"	l
-dummy_str	loader.s	/^dummy_str: db 'Arjob Mukherjee',0$/;"	d
 endstruc	guru.s	/^endstruc$/;"	l
 exit	loader.s	/^exit:$/;"	l
 failed_file_not_found	loader.s	/^failed_file_not_found:$/;"	l
 fat_files	loader.s	/^fat_files:   $/;"	l
 fatal_error	loader.s	/^fatal_error:	    db "Cannot continue. Fatal error.",0$/;"	d
-friendly_filenames	loader.s	/^friendly_filenames: db 10,13," guru.mod...",0$/;"	d
+friendly_filenames	loader.s	/^friendly_filenames: db 10,13," guru.mod   ",0$/;"	d
 hello	loader.s	/^hello: db "Showing this message using a debug.mod routine.",13,10$/;"	d
 hexdump	guru.s	/^hexdump:$/;"	l
 inc	guru.s	/^		inc di$/;"	d
 invalid_routine_number_msg	despatcher.s	/^invalid_routine_number_msg: db ";( addRoutine (despatcher). Routine number is "$/;"	d
+io_init	io.s	/^io_init:$/;"	l
+iret	kernel.s	/^iret$/;"	l
+irq0	kernel.s	/^irq0:$/;"	l
 msg_file_loaded	loader.s	/^msg_file_loaded:    db "   Done",0$/;"	d
 msg_file_not_found	loader.s	/^msg_file_not_found: db "   Not found",0$/;"	d
 msg_loader_welcome	loader.s	/^msg_loader_welcome: db 10,13,10,13$/;"	d
@@ -47,7 +52,13 @@ pop	guru.s	/^	pop di$/;"	d
 pop	guru.s	/^	pop ds$/;"	d
 pop	guru.s	/^	pop dx$/;"	d
 pop	io.s	/^	pop dx$/;"	d
+pop	kernel.s	/^			pop ds$/;"	d
+pop	kernel.s	/^	pop ds$/;"	d
 pop	loader.s	/^	pop ds$/;"	d
+pop	terminal.s	/^		pop ds$/;"	d
+pop	terminal.s	/^	pop di$/;"	d
+pop	terminal.s	/^	pop ds$/;"	d
+pop	terminal.s	/^	pop dx$/;"	d
 printString	loader.s	/^	printString di$/;"	d
 printhex	guru.s	/^printhex:$/;"	l
 push	despatcher.s	/^	push di$/;"	d
@@ -59,12 +70,23 @@ push	guru.s	/^	push di$/;"	d
 push	guru.s	/^	push ds$/;"	d
 push	guru.s	/^	push dx$/;"	d
 push	io.s	/^	push dx$/;"	d
+push	kernel.s	/^	push ds$/;"	d
 push	loader.s	/^	push ds$/;"	d
+push	terminal.s	/^	push di$/;"	d
+push	terminal.s	/^	push ds$/;"	d
+push	terminal.s	/^	push dx$/;"	d
+scroll_down_one_row	terminal.s	/^scroll_down_one_row:$/;"	l
+scroll_up_one_row	terminal.s	/^scroll_up_one_row:$/;"	l
+sti	kernel.s	/^sti$/;"	l
 struc	guru.s	/^struc params,2$/;"	l
 struc	guru.s	/^struc reg,2$/;"	l
 sys_addRoutine	despatcher.s	/^sys_addRoutine:$/;"	l
 sys_despatcher	despatcher.s	/^sys_despatcher:$/;"	l
-sys_io_add_system_message	io.s	/^sys_io_add_system_message:$/;"	l
-sys_io_get_system_message	io.s	/^sys_io_get_system_message:$/;"	l
+sys_io_add_message	io.s	/^sys_io_add_message:$/;"	l
+sys_io_get_message	io.s	/^sys_io_get_message:$/;"	l
+sys_term_keyboard_hook	terminal.s	/^sys_term_keyboard_hook:$/;"	l
+sys_term_output_flush	terminal.s	/^sys_term_output_flush:$/;"	l
+sys_term_read	terminal.s	/^sys_term_read:$/;"	l
+sys_term_write	terminal.s	/^sys_term_write:$/;"	l
 times	loader.s	/^times 768 - ($-$$) db 0$/;"	l
 vga_offset	guru.s	/^vga_offset: dw  0$/;"	d

@@ -74,14 +74,14 @@
 			mov ax, %1
 			; get the count already in memory
 			xor bx, bx
-			mov bl, [da_loader_module_list.count]
+			mov bl, [MDA.mod_b_count]
 
 			; each list item is 2 bytes long, so we multiply by 2
 			shl bx, 1	
-			mov [bx + da_loader_module_list.seg_start], ax
+			mov [bx + MDA.mod_lstw_segments], ax
 
 			; Increment the count value
-			inc byte [da_loader_module_list.count]
+			inc byte [MDA.mod_b_count]
 		pop ax
 		pop bx
 	%endmacro
@@ -95,7 +95,8 @@
 
 _init:
 	; Clear the memory for storing loaded modules
-	mov [da_loader_module_list.count], byte 0
+	;mov [da_loader_module_list.count], byte 0
+	mov [MDA.mod_b_count], byte 0
 
 	; Prints version information and other statup messages.
 	printString msg_loader_welcome
@@ -153,6 +154,8 @@ _init:
 	add si, 11		; 11 bytes per entry in fat_files
 	jmp .load_next
 .load_end:
+
+	jmp exit
 	
 	; clear the screen
 	;mov bx, GURU_CLEARSCREEN
@@ -205,18 +208,16 @@ exit:
 	jmp $
 
 ; ================ Included files =====================
-
 %include "../include/mos.inc"
 
-dummy_str: db 'Arjob Mukherjee',0
 ; ================ Data for loader =====================
 fat_files:   
          db 'GURU    MOD'
 		 db 'DESPCHR MOD'
 		 db 'PIT     MOD'
-	     ;db 'KERNEL  MOD'
+	     db 'KERNEL  MOD'
+		 db 'KBD     MOD'
          ;db 'IO      DRV'
-		 ;db 'KEY     MOD'
 		 ;db 'VGA     MOD'
          db 0
 
@@ -224,13 +225,11 @@ _init_addr: dw 	 MODULE0_OFF
             dw   MODULE0_SEG
 
 ; ================ Text messages =======================
-friendly_filenames: db 10,13," guru.mod...",0
+friendly_filenames: db 10,13," guru.mod   ",0
 					db 10,13," despchr.mod",0
-					db 10,13," pit.mod....",0
-					;db 10,13," kernel.mod.",0
-					;db 10,13," io.drv.....",0
-					;db 10,13," key.mod....",0
-					;db 10,13," vga.mod....",0
+					db 10,13," pit.mod    ",0
+					db 10,13," kernel.mod ",0
+					db 10,13," kbd.mod    ",0
 
 msg_file_loaded:    db "   Done",0
 msg_file_not_found: db "   Not found",0

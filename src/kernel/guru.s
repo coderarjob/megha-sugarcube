@@ -16,9 +16,9 @@
 ;   values.
 ; * printstr is not copy_to_screen. It now supports CR and LF characters.
 
-; Every driver and application programs start at location 0x64
-; The above area (0 to 0x63) is for future use, and not used currently.
-	ORG 0x64
+; Every driver and application programs start at location 0x10
+; The above area (0 to 0xF) is for future use, and not used currently.
+	ORG 0x10
 
 ; The first function in a module/driver program is a _init function. 
 ; This function is responsible for setting up the driver - install routines 
@@ -432,9 +432,9 @@ printhex:
 	    call _printhex
 		
 	    ; Display the string
-	    mov ax, .buffer
 		mov ax, cs
 		mov ds, ax
+	    mov ax, .buffer
 	    call copy_to_screen
 
 	pop di
@@ -450,7 +450,7 @@ printhex:
 ;              16 - to see 16 bit hex
 ;              8  - to see 8 bit hex (will show only AL)
 ;	       Note: 0 < CX < 16 and CX is divisible by 4
-;	ES:DI -> Write location 
+;	CS:DI -> Write location 
 ; Output: None
 _printhex:
 		push di
@@ -476,7 +476,7 @@ _printhex:
 		mov bx, ax		; just save the input
 		shr bx, 12		; left most nibble to the right most
 		mov bl, [cs:.hexchars + bx]; Get the hex character
-		mov [es:di], bl
+		mov [cs:di], bl
 		inc di
 
 		shl ax, 4		; Position the next nibble

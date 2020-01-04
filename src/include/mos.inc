@@ -33,8 +33,19 @@
 		.buffer:	resb 1 	
 	endstruc
 
-	; MOS Data Area Structures and Constants
-	%include "../include/mda.inc"
+	struc FAR_POINTER
+		.Offset	resw 1
+		.Segment resw 1
+	endstruc
+
+	%macro PROC 1
+		%1.Offset resw 1
+		%1.Segmnet resw 1
+		%1 EQU %1.Offset
+	%endmacro
+
+	; MOS Fixed Memory Locations
+	%include "../include/mem.inc"
 
 	; Kernel Structures and constants.
 	%include "../include/kernel.inc"
@@ -42,16 +53,23 @@
 	; Maximan and Minimum limits
 	%include "../include/limits.inc"
 
+	; MOS Data Area Structures and Constants
+	%include "../include/mda.inc"
+
 	; Routines in guru.mod (accessed via INT 0x41)
 	GURU_PRINTHEX			EQU 0
 	GURU_PRINTSTRING		EQU 1
 	GURU_CLEARSCREEN		EQU 2
 	GURU_HEXDUMP			EQU 3
 
-	; Routines in despatcher.mod (accessed via INT 0x40)
-	DS_ADD_ROUTINE			EQU 0x30
+	; Kernel Routines
+	K_IO_ADD_MESSAGE		EQU 10
+	K_IO_GET_MESSAGE		EQU 11
 
 	; Routines in 8254.mod (accessed via INT 0x40)
-	PIT_SET_COUNTER			EQU 10
-	PIT_SET_GATE			EQU 11
+	PIT_SET_COUNTER			EQU 12
+	PIT_SET_GATE			EQU 13
+
+	; Routines in despatcher.mod (accessed via INT 0x40)
+	DS_ADD_ROUTINE			EQU 48
 %endif

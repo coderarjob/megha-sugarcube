@@ -8,12 +8,13 @@
 ; ----------------------------------------------------------------------------
 
 ; This is module that will be loaded by the loader. The loader modules start at
-; location 0x64.
+; location 0x10.
 
-	Org 0x64
+	Org 0x10
 
 _init:
-	
+	pusha
+
 	; Add sys_set_counter to Despatcher modules
 	mov bx, DS_ADD_ROUTINE
 	mov ax, PIT_SET_COUNTER
@@ -27,6 +28,8 @@ _init:
 	mov cx, cs
 	mov dx, sys_set_gate_state
 	int 0x40
+	
+	popa
 
 	retf
 

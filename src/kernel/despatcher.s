@@ -30,8 +30,8 @@
 ; The first routine is _init, a initialization routine that works that is used
 ; to setup the data structures or to install a routine to IVT.
 
-; Loader modules start at location 0x64
-	org 0x64
+; Loader modules start at location 0x10
+	org 0x10
 
 _init:
 	pusha	; Push AX, BX, CX, DX, SI, DI, SP, BP
@@ -43,7 +43,7 @@ _init:
 	    mov [es:0x40 * 4 + 2], cs
 	    
 	    ; Register the addRoutine
-	    mov al, DS_ADD_ROUTINE
+	    mov ax, DS_ADD_ROUTINE
 	    mov cx, cs
 	    mov dx, sys_addRoutine
 		call __sys_addRoutine
@@ -91,12 +91,14 @@ sys_despatcher:
 
 	; Set DS to the Code Segment of the routine.
 	push bx
-		mov bx, [es:(bx + da_desp_routine_list_item.seg_start)]
+		;mov bx, [es:(bx + da_desp_routine_list_item.seg_start)]
+		mov bx, [es:(bx + MDA.dsp_lstd_routines + FAR_POINTER.Segment)]
 		mov ds, bx
 	pop bx
 
 	; Do a far call to the function based on the value in BX
-	call far [es:(bx + da_desp_routine_list_item.offset_start)]
+	;call far [es:(bx + da_desp_routine_list_item.offset_start)]
+	call far [es:(bx + MDA.dsp_lstd_routines + FAR_POINTER.Offset)]
 
 	pop es
 	pop ds
@@ -139,8 +141,10 @@ __sys_addRoutine:
 	; 4 bytes is the size of desp_routine_list_item.
 	shl bx,2		; multiply BX by 4
 
-	mov [es:(bx + da_desp_routine_list_item.offset_start)], dx
-	mov [es:(bx + da_desp_routine_list_item.seg_start)], cx
+	;mov [es:(bx + da_desp_routine_list_item.offset_start)], dx
+	;mov [es:(bx + da_desp_routine_list_item.seg_start)], cx
+	mov [es:(bx + MDA.dsp_lstd_routines + FAR_POINTER.Offset)], dx
+	mov [es:(bx + MDA.dsp_lstd_routines + FAR_POINTER.Segment)], cx
 
 	; Output success
 	mov al, 0

@@ -11,29 +11,48 @@
 ; Kernal module is initialized. All the system calls will be initalized later
 ; on by the System Calls kernel module.
 
-; Returns the top most message from the System Queue.
-; Input:
-;	AX:BX - Location to copy the queue item.
-; Output:
-;	AX    - 0 Failure, anything else success.
-sys_io_get_system_message:
-	push cx
-	push dx
-		mov cx, ds
-		mov dx, SYS_QUEUE
-		call queue_put
-	pop dx
-	pop cx
+%include "../include/mos.inc"
+
+io_init:
+	pusha
+	push es	
+		; Initialize Messages Queue
+		mov bx, MDA_SEG
+		mov es, bx
+		mov [es:MDA.msg_w_length], word K_MSG_QUEUE_MAX_ITEMS
+		mov [es:MDA.msg_w_width], word K_MSG_Q_ITEM_size
+		mov [es:MDA.msg_w_head], word 0
+		mov [es:MDA.msg_w_tail], word 0
+	pop es
+	popa
 	ret
 
-; Adds one message to the system queue.
+; Returns the top most message from the System Queue.
+; Input:
+;	AX:CX - Location to copy the queue item.
+; Output:
+;	AX    - 0 Failure, anything else success.
+sys_io_get_message:
+	push cx
+	push dx
+	push bx
+		mov bx, cx			; AX:BX - Pointer to data location
+		mov cx, MDA_SEG		; CX:DX - Pointer to queue
+		mov dx, MDA.k_q_messages
+		call queue_get
+	pop bx
+	pop dx
+	pop cx
+	retf
+
+; Adds one message to the Messages queue.
 ; Input:
 ; 	AX - Message
-; 	BX - Argument 0
-; 	CX - Argument 1
+; 	CX - Argument 0
+; 	DX - Argument 1
 ; Output:
 ; 	AX - 0 failure, anything else success.
-sys_io_add_system_message:
+sys_io_add_message:
 	push bx
 	push cx
 	push dx
@@ -42,14 +61,14 @@ sys_io_add_system_message:
 		; 1. ADD TO THE SYSTEM QUEUE
 		; -----------------------------------------------------
 		cli
-			mov [.queue_item + SYS_Q_ITEM.Message], ax
-			mov [.queue_item + SYS_Q_ITEM.Arg0], bx
-			mov [.queue_item + SYS_Q_ITEM.Arg1], cx
+			mov [.queue_item + K_MSG_Q_ITEM.Message], ax
+			mov [.queue_item + K_MSG_Q_ITEM.Arg0], cx
+			mov [.queue_item + K_MSG_Q_ITEM.Arg1], dx
 	
 			mov ax, ds
 			mov bx, .queue_item
-			mov cx, ds
-			mov dx, K_MAIN_QUEUE
+			mov cx, MDA_SEG
+			mov dx, MDA.k_q_messages
 			call queue_put
 
 			; TODO: Handle Queue full scenario
@@ -60,29 +79,6 @@ sys_io_add_system_message:
 	pop dx
 	pop cx
 	pop bx
-	ret
-.queue_item: resw K_SYS_Q_ITEM_SIZE
+	retf
+.queue_item: resb K_MSG_Q_ITEM_size
 
-; Notifies all the routines which are awating for the current Message. 
-; Input:
-;	AX	- Message
-__notify_all:
-	pusha
-		mov si, [K_NOTIFICATION_LIST]
-.again:
-	popa
-	ret
-
-K_MAIN_QUEUE:
-	.length dw 100
-	.width  dw 3	
-	;|-----|------------|------------|
-	;|  0  |     1      |     2      |
-	;|-----|------------|------------|
-	;| MSG | ARG WORD 0 | ARG WORD 1 |
-	;|-----|------------|------------|
-	.head dw 0
-	.tail dw 0
-	.buffer resw 300
-
-K_NOTIFICATION_LIST: resb K_NOTIFICATION_ITEM_SIZE * K_MAX_NOTIFICATION_COUNT 
