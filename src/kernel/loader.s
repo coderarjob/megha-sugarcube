@@ -155,7 +155,9 @@ _init:
 	jmp .load_next
 .load_end:
 
-	jmp exit
+	; Call Kernel Takeover routine (This will never return)
+	mov bx, K_TAKEOVER
+	int 0x40
 	
 	; clear the screen
 	;mov bx, GURU_CLEARSCREEN

@@ -19,69 +19,55 @@
 
 __init:
 	pusha
+	push es
 
-	; Initaize sub modules
-	call io_init
+		; Initaize sub modules
+		call io_init
 
-	; Install IRQ 0
-	xor ax, ax
-	mov es, ax
-	mov [es:8*4],word irq0
-	mov [es:8*4+2], cs
+		; ------ [ Kernel ] ---------
+		mov bx, DS_ADD_ROUTINE
+		mov ax, K_TAKEOVER
+		mov cx, cs
+		mov dx, sys_k_takeover
+		int 0x40
 
-	; Install System Calls
-	mov bx, DS_ADD_ROUTINE
-	mov	ax, K_IO_ADD_MESSAGE
-	mov cx, cs
-	mov dx, sys_io_add_message
-	int 0x40
+		; ------ [ IO Module ] ---------
+		mov bx, DS_ADD_ROUTINE
+		mov	ax, K_IO_ADD_MESSAGE
+		mov cx, cs
+		mov dx, sys_io_add_message
+		int 0x40
 
-	mov bx, DS_ADD_ROUTINE
-	mov ax, K_IO_GET_MESSAGE
-	mov cx, cs
-	mov dx, sys_io_get_message
-	int 0x40
+		mov bx, DS_ADD_ROUTINE
+		mov ax, K_IO_GET_MESSAGE
+		mov cx, cs
+		mov dx, sys_io_get_message
+		int 0x40
 
+		; --------[ IRQ 0 ] ----------
+		xor ax, ax
+		mov es, ax
+		mov [es:8*4],word irq0
+		mov [es:8*4+2], cs
+
+	pop es
 	popa
 
-	retf
+retf
 
-irq0:
-	cli
-	pusha
-	push ds
-	
-			push cs
-			pop ds
+sys_k_takeover:
 
-			; Read System Queue
-			mov bx, K_IO_GET_MESSAGE
-			mov ax, ds
-			mov cx, .key
-			int 0x40
 
-			cmp ax, 0
-			je .end
-			
+	; As this is a system call, IF (Interrupt)
+	; is disabled. We need to enable it.
+	sti
 
-			mov bx, GURU_CLEARSCREEN
-			int 0x41
+	; Infinite loop
+	jmp $
 
-			mov bx, GURU_PRINTHEX
-			mov ax, [.key + K_MSG_Q_ITEM.Arg1]
-			mov cx, 16
-			int 0x41
-.end:
-			; Send EOI to PIC
-			mov al, 0x20
-			out 0x20, al
+	; IMP: MUST NEVER RETURN
+	ret
 
-	pop ds
-	popa
-sti
-iret
-
-.key: resb K_MSG_Q_ITEM_size
-
+%include "interrupt.s"
 %include "io.s"
 %include "../common/queue.s"

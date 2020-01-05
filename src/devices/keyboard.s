@@ -55,7 +55,6 @@ _init:
 	retf
 
 kb_interrupt:
-	cli
 	pusha
 	push ds
 		
@@ -385,7 +384,6 @@ kb_interrupt:
 		out 0x20, al
 	pop ds
 	popa
-	sti
 	iret
 
 .jtable_nums: dw .nums_case0, .nums_case1, .nums_case2, .nums_case3

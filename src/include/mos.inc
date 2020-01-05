@@ -65,10 +65,11 @@
 	; Kernel Routines
 	K_IO_ADD_MESSAGE		EQU 10
 	K_IO_GET_MESSAGE		EQU 11
+	K_TAKEOVER				EQU 12
 
 	; Routines in 8254.mod (accessed via INT 0x40)
-	PIT_SET_COUNTER			EQU 12
-	PIT_SET_GATE			EQU 13
+	PIT_SET_COUNTER			EQU 13
+	PIT_SET_GATE			EQU 14
 
 	; Routines in despatcher.mod (accessed via INT 0x40)
 	DS_ADD_ROUTINE			EQU 48
