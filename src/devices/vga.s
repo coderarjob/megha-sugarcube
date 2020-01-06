@@ -1,10 +1,14 @@
+; Megha Sugarcube Operating System 
 
-	COLUMNS: equ 80
-	ROWS: EQU 25
-	PAGES: EQU 2
+; This is the VGA Text Mode Driver. It is responsible for Cursor movement,
+; display of text and various text attributes that are supported by VGA.
+;
+; Initial Date: 05012019
+;
+; This is a module that will be loaded by the OS loader. All the modules in MOS
+; starts at location 0x10
 
-	LAST_ROW_LAST_PAGE: EQU (PAGES * ROWS) -1
-	FIRST_ROW_LAST_PAGE: EQU (PAGES -1) * ROWS
+	org 0x10
 
 %macro _out 2
 	push ax
@@ -254,6 +258,8 @@ sys_vga_set_cursor_attribute:
 	; We will set the CD (Cursor Display) bit to 1
 	or al, CURSOR.CD_ON
 	and al, 0xF			; Only the right most 4 bits are importaint
+						; TODO: The above AND is wrong. It clears 
+						; the CD bit set previously.
 
 	_out 0x3d4, 0xA
 	_out 0x3d5, al

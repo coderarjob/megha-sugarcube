@@ -4,12 +4,14 @@
 %ifndef _KERNEL_INC_
 	%define _KERNEL_INC_
 
-	MSG_KB_DOWN:	EQU 0
-	MSG_KB_UP:		EQU 1
+	MSG_NONE:		EQU 0
+	MSG_KB_DOWN:	EQU 1
+	MSG_KB_UP:		EQU 2
+
+	ERR_NOTI_FULL:	EQU 10
 
 	struc K_NOTIFICATION_ITEM
 		.Message resw 1
-		.isBlocked resw 1
 		PROC .Routine
 	endstruc
 

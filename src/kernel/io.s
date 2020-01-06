@@ -23,9 +23,35 @@ io_init:
 		mov [es:MDA.msg_w_width], word K_MSG_Q_ITEM_size
 		mov [es:MDA.msg_w_head], word 0
 		mov [es:MDA.msg_w_tail], word 0
+
+		; Initialize Notification list.
+		; We initialize the memory array with MSG_NONE
+		mov di, MDA.k_list_notification
+		mov al, MSG_NONE
+		mov cx, K_NOTIFICATION_ITEM_size * K_MAX_NOTIFICATION_COUNT
+		rep stosb
+
+		; Test
+		;mov ax, MSG_KB_DOWN
+		;mov cx, cs
+		;mov dx, __goo
+		;call sys_io_add_notification
+
+		;mov ax, MSG_KB_UP
+		;mov cx, cs
+		;mov dx, __foo
+		;call sys_io_add_notification
 	pop es
 	popa
 	ret
+
+__foo:
+	xchg bx, bx
+	xchg ax, ax
+	retf
+
+__goo:
+	retf
 
 ; Returns the top most message from the System Queue.
 ; Input:
@@ -52,6 +78,7 @@ sys_io_get_message:
 ; 	DX - Argument 1
 ; Output:
 ; 	AX - 0 failure, anything else success.
+;		 If the queue is full, it returns 0.
 sys_io_add_message:
 	push bx
 	push cx
@@ -70,15 +97,65 @@ sys_io_add_message:
 			mov cx, MDA_SEG
 			mov dx, MDA.k_q_messages
 			call queue_put
-
-			; TODO: Handle Queue full scenario
 		sti
 		; -----------------------------------------------------
 		
-		; TODO: Notify routines waiting for the Message
 	pop dx
 	pop cx
 	pop bx
 	retf
 .queue_item: resb K_MSG_Q_ITEM_size
 
+; Adds a Notification Item
+; Input:
+;	AX		- MSG
+;	CX:DX	- Routine address
+; Output:
+;	AX		- 0 is success, 1 notification list full
+sys_io_add_notification:
+	push bx
+	push cx
+	push di
+	push es
+
+		; Sets ES = Segment of the MDA
+		mov bx, MDA_SEG
+		mov es, bx
+		
+		; Set the location of the notification array to DI
+		mov di, MDA.k_list_notification
+
+		; Keep CX (Segment part of the routine) in BX
+		mov bx, cx
+
+		; Search for a place in the notification array, which is free.
+		; Free place is marked by the Message word to MSG_NONE
+
+		; Note: Notificaions can be disabled by setting the Count to Zero. 
+		;		That is the reason for the JCXZ instruction
+		mov cx, K_MAX_NOTIFICATION_COUNT
+		jcxz .success
+.again:
+			cmp word [es:di + K_NOTIFICATION_ITEM.Message], MSG_NONE
+			je .found							; Empty location found.
+			add di, K_NOTIFICATION_ITEM_size	; Try next location.
+		loop .again
+
+		; End is reached, no empty location found. We exit.
+		jne .full 		
+.found:
+		; We have found an empty location. Location in ES:DI
+		mov [es:di + K_NOTIFICATION_ITEM.Message], ax
+		mov [es:di + K_NOTIFICATION_ITEM.Routine.Segment], bx
+		mov [es:di + K_NOTIFICATION_ITEM.Routine.Offset], dx
+.success:
+		xor ax, ax
+		jmp .end
+.full:
+		mov ax, ERR_NOTI_FULL
+.end:
+	pop es
+	pop di
+	pop cx
+	pop bx
+retf

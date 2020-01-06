@@ -40,7 +40,7 @@
 
 	%macro PROC 1
 		%1.Offset resw 1
-		%1.Segmnet resw 1
+		%1.Segment resw 1
 		%1 EQU %1.Offset
 	%endmacro
 
@@ -66,10 +66,19 @@
 	K_IO_ADD_MESSAGE		EQU 10
 	K_IO_GET_MESSAGE		EQU 11
 	K_TAKEOVER				EQU 12
+	K_IO_ADD_NOTIFICATION	EQU 13
 
 	; Routines in 8254.mod (accessed via INT 0x40)
-	PIT_SET_COUNTER			EQU 13
-	PIT_SET_GATE			EQU 14
+	PIT_SET_COUNTER			EQU 20
+	PIT_SET_GATE			EQU 21
+	
+	; Routines in VGA.mod	(accessed via INT 0x40)
+	VGA_WRITE					EQU 22
+	VGA_SCROLL_UP				EQU 23
+	VGA_SCROLL_DOWN				EQU 24
+	VGA_SET_CURSOR_LOCATION		EQU 25
+	VGA_SET_CURSOR_ATTRIBUTES	EQU 26
+	VGA_SET_TEXT_ATTRIBUTES		EQU 27
 
 	; Routines in despatcher.mod (accessed via INT 0x40)
 	DS_ADD_ROUTINE			EQU 48

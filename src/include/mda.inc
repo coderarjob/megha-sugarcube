@@ -34,9 +34,11 @@
 			.msg_lst_buffer 		RESB K_MSG_QUEUE_MAX_ITEMS * K_MSG_Q_ITEM_size
 
 		; ---------------------[ Messsage Notification List ] -----------------
-		.k_notification:
-			.noti_w_count:	  		RESW 1
-			.noti_list_items: 		RESW K_NOTIFICATION_ITEM_size * K_MAX_NOTIFICATION_COUNT
+		.k_list_notification:		RESW K_NOTIFICATION_ITEM_size * K_MAX_NOTIFICATION_COUNT
+		; ---------------------[ Text Mode VGA Driver ] -----------------
+		.vga_w_mem_now:				resw 1
+		.vga_w_cur_now:				resw 1
+		.vga_b_text_attr:			resb 1
 	endstruc
 
 %endif

@@ -8,11 +8,15 @@
 irq0:
 	pusha
 	push ds
+	push es
 	
+		; Make DS = CS
 		push cs
 		pop ds
 
+		; ------------------------------------------------------------------
 		; Read System Queue
+		; ------------------------------------------------------------------
 		mov bx, K_IO_GET_MESSAGE
 		mov ax, ds
 		mov cx, .key
@@ -21,18 +25,54 @@ irq0:
 		cmp ax, 0
 		je .end
 
-		mov bx, GURU_CLEARSCREEN
-		int 0x41
+		; ------------------------------------------------------------------
+		; Go through each of the items in Notifications array
+		; and call the Routine. Because this is inside an Interrupt
+		; the IF bit is already cleared and all Interrupts are disabled.
+		; TODO: Should we enable interrupt before??
+		; ------------------------------------------------------------------
+		
+		; Set ES register to proper segment
+		mov bx, MDA_SEG
+		mov es, bx
 
-		mov bx, GURU_PRINTHEX
-		mov ax, [.key + K_MSG_Q_ITEM.Arg1]
-		mov cx, 16
-		int 0x41
+		; We will go through each of the items and will call the routine
+		; which Message matches the current one.
+		mov cx, K_MAX_NOTIFICATION_COUNT
+		mov di, MDA.k_list_notification
+
+.again:
+			mov ax, [.key + K_MSG_Q_ITEM.Message]
+			cmp [es:di + K_NOTIFICATION_ITEM.Message], ax
+			jne .loop
+
+			; if CX = 0, no match is found
+			jcxz .end
+
+			; TODO: How do we pass the Message arguments to the Routine??
+			call far [es:di + K_NOTIFICATION_ITEM.Routine]
+
+.loop:
+			; Increment DI
+			add di, K_NOTIFICATION_ITEM_size
+		loop .again
+
+		; ------------------------------------------------------------------
+		;mov bx, GURU_CLEARSCREEN
+		;int 0x41
+
+		;mov bx, GURU_PRINTHEX
+		;mov ax, [.key + K_MSG_Q_ITEM.Arg1]
+		;mov cx, 16
+		;int 0x41
 .end:
+		; ------------------------------------------------------------------
 		; Send EOI to PIC
+		; ------------------------------------------------------------------
 		mov al, 0x20
 		out 0x20, al
 
+	pop es
 	pop ds
 	popa
 iret

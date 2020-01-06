@@ -44,6 +44,11 @@ __init:
 		mov dx, sys_io_get_message
 		int 0x40
 
+		mov bx, DS_ADD_ROUTINE
+		mov ax, K_IO_ADD_NOTIFICATION
+		mov cx, cs
+		mov dx, sys_io_add_notification
+		int 0x40
 		; --------[ IRQ 0 ] ----------
 		xor ax, ax
 		mov es, ax
