@@ -1,4 +1,365 @@
 MEGHA SUGARCUBE OPERATING SYSTEM					     TECHNICAL WHITE PAPER
 --------------------------------						 ---------------------
 
+-----------------------------------------------------------------------------
+BASIC MEMORY MAP OF IBM PC
+-----------------------------------------------------------------------------
 
+			Memory location		Size	  End location
+			-------------------------------------------
+IVT			0					1024		3FF
+			-------------------------------------------
+BDA			400                 256			4FF
+			-------------------------------------------
+*Free		500					~29KB		7BFF
+			-------------------------------------------
+Bootloader	7C00				512			7DFF
+			-------------------------------------------
+Free		7E00				609			9FBFF
+			-------------------------------------------
+**EBDA		9FC00				1K			9FFFF
+			-------------------------------------------
+VGA			A0000				96KB		B7FFF
+			-------------------------------------------
+VGA Text	B8000				32KB		BFFFF
+			-------------------------------------------
+
+*  In my laptop the stack is at 0x6B0:0xFF2 at the beginning of the bootloader.
+   So I do not know if 500 and above is free or not.
+
+** The start location of EBDA can be found by reading the 0x40:0xE location.
+
+----------------------------------------------------------------------------
+MEGHA ABI INTRODUCTION
+----------------------------------------------------------------------------
+
+Application Binary Interface is a document that deals with the following:
+
+* Processor Instruction set
+
+* Procedure/Function calling convention: How data will be passed into and out
+                                         of a function.
+* System call calling convention
+
+* What are the files in the Operating system and what are its functions?
+
+* Basic data types understood by the kernel function calls and system calls.
+
+* Allignment requirements
+
+----------------------------------------------------------------------------
+Processor Instruction Set:
+----------------------------------------------------------------------------
+Megha targets x86 Real Mode, but the goal is to have an OS that is 8086
+compatible. As 8086 is the least common denomenator, any CPU Instruction or 
+memory type that was not part of the 8086 is not allowed. 
+
+There is a contant 8086_MODE in MDA.INC file, that determines if OS can have
+Real Mode registers and instructions or is solely a 8086 OS.
+
+------------------------
+IF 8086_MODE IS DEFINED:
+------------------------
+
+	-----
+	Note: This can be checked by the presence of prefix bytes 66 
+	----- (Operator override prefix) or 67 (address override prefix).
+
+	So we only use General Purpose Registers 
+		AX [AH, AL], BX, CX, DX SI, DI and 
+	Segment registers
+		DS, SS, CS and ES.
+
+	-----
+	Note: Current version of MOS is not complient with this requirement, 
+	----- 
+			1. IMUL instruction is sometimes used in the code.
+			2. Only BX and BP can be used for Effective Addressing in 8086. We
+			   are using DI, SI etc in Address calculation as well.
+
+
+----------------------------
+IF 8086_MODE IS NOT DEFINED:
+----------------------------
+	
+	This is the default mode that will be enabled by default. This mode allows
+	applications writen in modern C compilers to run on Megha. However as the
+	name suggestes, in pure 8086 processor, such programs will not work.
+
+	8086_MODE determines if OS can have Real Mode instructions and registers or
+	it should use pure 8086 instructions and registers only.
+
+-----------------------------------------------------------------------------
+CALLING CONVENTION IN SYSTEM CALLS
+-----------------------------------------------------------------------------
+
+Arguments are passed from left-to-right in registers in the order AX, CX,
+DX, SI, DI. 
+
+Return values is in 
+	* BX in case of 16 bit and 
+	* AX:BX in case of 32 bit value (AX has the higher word). 
+
+The function number is provided in BX as well.
+The reason AX is not used, is simply to keep the dispatcher code simple due to
+the fact that only BX can be used in Effective Addressing in 8086.
+
+1. CX, DX, SI, DI, DS, ES registers are callee saved (the despatcher). 
+2. AX, BX are caller saved.
+3. The DS register points to the Code Segment of the called routine.
+   Becuase we are goint to use far pointers always, there is no need 
+   for the DS to be set in the despatcher. The called routine is free to use
+   DS as it pleases. 
+
+-----------------------------------------------------------------------------
+CALLING CONVENTION IN APPLICATION PROGRAMS
+-----------------------------------------------------------------------------
+
+When an application is created or switched to (by the scheduler), SMALL memory
+model is follwed. That is the Data Segment and Stack Segment registers have 
+the same value as the Code Segment.
+
+DS = SS = CS
+
+This is done so that compilers like GCC can be used to write programs for
+Megha and in these compilers, this memory mode is assumed.
+
+Arguments will be pushed into the stack. 
+If the function defination is the following:
+	int add_two(int a, int b);
+	int sum = add_two(4,9);
+
+Then parameters will be pushed into the stack from the right. Thus, argument
+'9' will be pushed first. 
+	push 9
+	push 4
+	call add_two
+
+The return value will be in AX, if 16 bits; and AX:DX if 32 bits (AX have the
+low word, and DX the high word)
+
+All the registers, expect BX is callee saved.
+
+-----------------------------------------------------------------------------
+SYSTEM QUEUE
+-----------------------------------------------------------------------------
+All events in the OS (keypress, timer ticks, mouse click etc) will be handled
+similar to the way Windows does it. Drivers, OS can add entries to a system
+queue to indicate some event occuring. The queue item also holds the parameter
+to a perticular message. For example, for the KEY_DOWN message, the KeyCode,
+Scancode, Flags are also added in the queue as parameters to the KEY_DOWN
+message.
+
+	[ Device 1]  --------------------------
+										  |
+									  -------------------- 	
+										System Queue 
+									  -------------------- 	
+										* Message (word)
+										* Param	(2 words) 
+									  -------------------- 	
+										  |
+	[ Device 2]  --------------------------
+
+-----------------------------------------------------------------------------
+NOTIFICATION LIST
+-----------------------------------------------------------------------------
+Along with the System queue, there is one Notification List. Applications and
+System Softwares (Drivers, OS) can ask the OS to inform them when a message is
+added to the System Queue. For the current single process implementation, this
+is the only way to receive events and messages from the OS. We cannot query the
+system queue ourselves (as in Windows), as that would block as 
+TERMINAL MODULE would also need such a WHILE loop.
+
+Whenever OS will notify an Application, it would do a context switch (currently
+it will just preserve ABI by setting the Segment Registers properly) and make
+the application as the Currently Executing Process. 
+
+----
+NOTE: ABI needs to be perserved as the callback routine would assume that be
+----  written that way.
+
+----
+NOTE: The OS System Calls ABI are different and that part is handled by the
+----  Despatcher routine.
+
+However if a System Software is going to be notified, the OS will simply call
+the callback routine, however the System Calls ABI is going to be followed. The
+DS will be set to the Code Segment of the routine. However the Stack Segment
+will remain unchanged.
+
+----
+NOTE: Routines of System Software thus need be written in either Assembly or
+----  with Watcom compiler that takes into account the fact that DS = CS <> SS.
+
+		enum NOTI_TYPE {APPLICATION_SOFTWARE, SYSTEM_SOFTWARE};
+
+		struct notification_listitem{
+			u16	message,
+			u16 type,
+			u16 isRunning,
+			union {
+				u16 .PID
+				u16 .CodeSegment
+			}
+			u16 .CodeOffset
+		};
+
+For an application program
+		notification_listitem.type = APPLICATION_SOFTWARE
+		notification_listitem.PID  = CurrentProcess().PID
+
+For System Software
+		notification_listitem.type = SYSTEM_SOFTWARE
+		notification_listitem.CodeSegment  = CS
+
+-----------------------------------------------------------------------------
+PROCESS
+-----------------------------------------------------------------------------
+Because Megha Sugarcube is a single process Operating System, the idea of a
+process is there because of the below three reasons:
+	1. To help define the ABI.
+	2. To be able to have DOS like Resident Programs
+	3. Future Multiprocessing capabilities.
+
+A single Process would mean that CPU is devoted completely to one application
+until it exits either volenterily or by the OS. There is one exception however,
+the IRQ0 ticks at 10KHz and thus every 100uS, the currently executing process
+will stop and control will pass to the IRQ routine. If there is a notification
+that need to be passed to some application then the below steps are taken:
+
+
+	1. Saves the Current Process by a similar system call proc_save(ip, flags);
+	   IP and Flags are taken from the Stack in IRQ0.
+
+				old_pid = Current_Executing_Process;
+
+	   			proc_save(cs, ip, flags)
+				{
+					pid = Current_Executing_Process;
+					process[pid].CS = cs;
+					process[pid].IP = ip;
+					process[pid].Flag = flags;
+					process[pid].DS = DS;
+					process[pid].SS = SS;
+
+					#ifdef 8086_MODE
+						process[pid].AX = AX;
+						process[pid].BX = BX;
+						process[pid].CX = CX;
+						process[pid].DX = DX;
+						process[pid].SI = SI;
+						process[pid].DI = DI;
+						process[pid].BP = BP;
+					#else
+						process[pid].EAX = EAX;
+						process[pid].EBX = EBX;
+						process[pid].ECX = ECX;
+						process[pid].EDX = EDX;
+						process[pid].GS = GS;
+						process[pid].ES = ES;
+						process[pid].FS = FS;
+						process[pid].ESI = ESI;
+						process[pid].EDI = EDI;
+					#endif
+				}
+
+	2. If type == SYSTEM_SOFTWARE
+			a. DS = Code Segment of the callback
+			b. Far Call the routine.
+			c. When the routine returns, continue with the notification
+			despatching.
+
+	3. If type == APPLICATION_SOFTWARE
+			a. Calls a system call with the PID and the routine Offset in the 
+			   notification item. Example:
+
+				proc_restore(noti_item.PID;
+				proc_runat(noti_item.offset);
+
+			b. The system call will do the following:
+					
+					enum what {GPR, FLAGS, IP};
+
+					proc_restore(pid){
+						
+						Current_Executing_Process = pid;
+						DS = process[pid].DS;
+
+						#ifdef 8086_MODE
+							AX = process[pid].AX 
+							BX = process[pid].BX 
+							CX = process[pid].CX 
+							DX = process[pid].DX 
+							SI = process[pid].SI 
+							DI = process[pid].DI 
+							BP = process[pid].BP 
+						#else
+							EAX = process[pid].EAX 
+							EBX = process[pid].EBX 
+							ECX = process[pid].ECX 
+							EDX = process[pid].EDX 
+							 GS = process[pid].GS 
+							 ES = process[pid].ES
+							 FS = process[pid].FS 
+							ESI = process[pid].ESI 
+							EDI = process[pid].EDI 
+						#endif
+					}
+
+					proc_runat(offset)
+					{
+						pid = Current_Executing_Process;
+
+						#ifdef 8086_MODE
+							EFlags = process[pid].Flags;
+						#else
+							Flags = process[pid].Flags;
+						#endif
+
+						SS = sprocess[pid].SS; 
+						segment = process[pid].CS;
+						ip = process[pid].IP;
+
+						call far segment:ip;
+					}
+
+			c. When the routine returns, continue with the notification
+			despatching.
+		4. Restore the GP Registers of the old_pid process.
+				proc_restore(old_pid);
+
+		5. Send EOI and IRET
+
+The ABI of a process in MOS is such that application programs can easily be
+compiled by C compilers that support 32 bit output. No need to use specific
+compilers that output 16 bit code. In Intel terms, the Calling convention 
+is SMALL mode.
+
+	1. A segment number - Where the application is loaded by the OS.
+	2. An Process ID	- Used to terminate and send Messages (for future).
+	3. EXE_FileName		- 8.3 filename of the executing program.
+	4. GP Registers		- We store 32 bit registers, becuase we want to have
+						  applications in compilers like GCC which do not
+						  support 16 bit x86.  MOS can be compiled for pure
+						  16 bit processors by setting a FLAG in the MOS.INC.
+
+						  If 8086_MODE is defined then
+							  AX, BX, CX, DX, ES, SI, DI, DS, CS, IP
+
+						  Otherwise:
+						      EAX, EBX, ECX, EDX, ES, GS, FS, ESI, EDI, 
+							  DS, CS, IP
+
+	5. Flags Register	- If 8086_MODE is defined FLAGS otherwise EFLAGS
+	6. Message Queue	- OS will copy messages from System Queue to the queue
+						  of the current process. (for future)
+	7. Mode				- Sleeping, Active (for future)
+	8. Video Buffer/
+	   Virtual TTY ID	- When multiple applications are running at the same
+	   					  time, the application that are running in the 
+						  backgroung must bot write to the VGA memory 
+						  themselves. Instead they write to a portation of
+	   					  memory in their address space. OS will copy the 
+						  display buffer of the current process to VGA memory 
+						  when switching to the application. (for future)
