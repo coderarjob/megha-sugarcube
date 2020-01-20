@@ -118,13 +118,13 @@ loadFile:
 	; we copy as many bytes in the CX register from the internal buffer to
 	; the output buffer
 	push es				; preserve the ES value before change
-	mov dx, cx
-	cld				; set direcection flag = 0 (increment)
-	mov si, buffer
-	mov ax, [osegment]		; set up destination address
-	mov es, ax
-	mov di, [osegoffset]
-	rep movsb
+		mov dx, cx
+		cld				; set direcection flag = 0 (increment)
+		mov si, buffer
+		mov ax, [osegment]		; set up destination address
+		mov es, ax
+		mov di, [osegoffset]
+		rep movsb
 	pop es				; restore the ES register
 	; update remaining size variable.
 	sub word [fileremsize], dx	; remaining = remaining - bytes read

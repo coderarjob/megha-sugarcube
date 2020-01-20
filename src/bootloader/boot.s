@@ -132,8 +132,8 @@ boot_main:
 
 	; Read the directory and search for file
 
-	mov ax, 0x800
-	mov bx, 0x100
+	mov ax, LOADER_SEG
+	mov bx, LOADER_OFF
 	mov dx, bootfile
 
 	int 0x30

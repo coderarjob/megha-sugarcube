@@ -1,6 +1,6 @@
 ; Megha OS Loader
 ; Loades different programs/modules into memory and calls the _init routine.
-; Version: 0.22 (161119)
+; Version: 19012020
 ;
 ; Initial version was 0.2
 ;
@@ -48,6 +48,33 @@
 ;	in the _init routine.
 ; * Removed '.section data', as it resulted in wrong size of the output binary.
 
+; ----------------------------
+; Changes in Version 18012020
+; ----------------------------
+; * AddToModule now saves the Size of each module as well as a Word.
+; * This is because, the first process will be loaded just where the last 
+;   module ends.
+; ----------------------------
+; Changes in Version 19012020
+; ----------------------------
+; * AddToModule now saves information in two places. 
+;   1. Modules list at 0x800:0x0
+;   2. Allocated Memory List: 0x800:0x235E
+;
+; * Modules list has items with 
+;   1. Index to the Allocated Memory List
+;   2. Filename
+;
+; * Allocated memory list has items with
+;   1. Status
+;   2. Segment
+;   3. Size
+
+; This separation is done becuase Allocated memory Array will be used by both
+; the Processes and modules. By keeping separate 3 lists (Process, Module,
+; Allocated memory) we can keep the Memory Managent module generic and simple
+; with complete decoupling from the meaning of a process and module.
+
 	; ******************************************************
 	; MACRO AND STRUCTURE BLOCK
 	; ******************************************************
@@ -64,39 +91,44 @@
 	; location 0x800:0x1. 0x800:0 is used to store the number of item in 
 	; this list.
 	; This structure can be found in the mda.inc file
-	%macro AddToModuleList 1
-		push bx
+	; Argument: Segment, Size, ASCIIZ Friendly Filename
+	%macro AddToModuleList 3
+		push si
+		push cx
 		push ax
-			; load the argument into a register.
-			; This will save us from specifying a operand size.
+
+			; load the argument into a register via the stack.
 			; Also makes the below code work with any kind of
 			;argument.
-			mov ax, %1
-			; get the count already in memory
-			xor bx, bx
-			mov bl, [MDA.mod_b_count]
+			push word %1
+			push word %2
+			push word %3
+			pop si			; Friendly filename
+			pop cx			; Size
+			pop ax			; Segment
 
-			; each list item is 2 bytes long, so we multiply by 2
-			shl bx, 1	
-			mov [bx + MDA.mod_lstw_segments], ax
-
-			; Increment the count value
-			inc byte [MDA.mod_b_count]
+		; The filename provided will be in the format '\r\n aaaaa.bbb    0'.
+		; The number of trailing space is such that the filename always has
+		; length 15 (for displaying as columns when printed on screen).
+		; We need to modify SI to that we donot copy the '\r\n ' but keep the
+		; trailing spaces.
+			add si, 3
+			call __add_module_to_process_list
 		pop ax
-		pop bx
+		pop cx
+		pop si
 	%endmacro
 
 	; ******************************************************
 	; MAIN BLOCK
 	; ******************************************************
 	
-; Loader is loaded at location 0x800:0x100
-	ORG 0x100
+; Loader is loaded at location 0x800:0x400
+	ORG 0x500
 
 _init:
 	; Clear the memory for storing loaded modules
-	;mov [da_loader_module_list.count], byte 0
-	mov [MDA.mod_b_count], byte 0
+	mov [MDA.k_w_modules_count], word 0
 
 	; Prints version information and other statup messages.
 	printString msg_loader_welcome
@@ -130,7 +162,7 @@ _init:
 	je failed_file_not_found
 
 	; Add to the module list
-	AddToModuleList [_init_addr+2]
+	AddToModuleList [_init_addr+2], ax, di
 
 	; call the _init routine of the loaded module
 	push ds
@@ -209,6 +241,65 @@ failed_file_not_found:
 exit:
 	jmp $
 
+; Input:
+; 	AX - Segment
+;	CX - Size
+; 	DS:SI - ASCIIZ Friendly filename
+; Output:
+;	None
+__add_module_to_process_list:
+	pusha
+	push es
+
+		; get the count already in memory
+		mov bx, [MDA.k_w_modules_count]
+
+		; -------------------------------------------------
+		; Add to Process Memory List
+		; -------------------------------------------------
+		push bx
+			; each next location in the list.
+			imul bx, K_MEMORY_ITEM_size
+
+			; Fill in the list item.
+			mov [bx + MDA.k_list_process_memory+ K_MEMORY_ITEM.Segment], ax
+			mov [bx + MDA.k_list_process_memory+ K_MEMORY_ITEM.Size], cx
+			mov word [bx + MDA.k_list_process_memory+ K_MEMORY_ITEM.State], MEM_ITEM_STATE_USED
+			mov word [bx + MDA.k_list_process_memory+ K_MEMORY_ITEM.BlockCount], 1
+		pop bx
+
+		; -------------------------------------------------
+		; Add to Modules list
+		; -------------------------------------------------
+		imul bx, K_MODULE_size
+		mov word [bx + MDA.k_list_modules + K_MODULE.Segment], ax
+		
+		; -------------------------------------------------
+		; Copy the filename
+		; -------------------------------------------------
+
+		; 1. Set DS = ESilename
+		push ds		
+		pop es
+
+		; 2. Get Count of the filename
+		mov cx, -1
+		xor ax, ax
+		mov di, si
+		repne scasb
+		inc cx
+		neg cx
+
+		; 3. Copy the filename
+		lea di, [bx + MDA.k_list_modules+ K_MODULE.Filename]
+		repne movsb 
+		
+		; Increment the count value
+		inc word [MDA.k_w_modules_count]
+
+	pop es
+	popa
+ret
 ; ================ Included files =====================
 %include "../include/mos.inc"
 

@@ -9,7 +9,7 @@ irq0:
 	pusha
 	push ds
 	push es
-	
+
 		; Make DS = CS
 		push cs
 		pop ds
@@ -51,21 +51,14 @@ irq0:
 
 			; TODO: How do we pass the Message arguments to the Routine??
 			call far [es:di + K_NOTIFICATION_ITEM.Routine]
-
 .loop:
 			; Increment DI
 			add di, K_NOTIFICATION_ITEM_size
 		loop .again
 
 		; ------------------------------------------------------------------
-		;mov bx, GURU_CLEARSCREEN
-		;int 0x41
-
-		;mov bx, GURU_PRINTHEX
-		;mov ax, [.key + K_MSG_Q_ITEM.Arg1]
-		;mov cx, 16
-		;int 0x41
 .end:
+
 		; ------------------------------------------------------------------
 		; Send EOI to PIC
 		; ------------------------------------------------------------------

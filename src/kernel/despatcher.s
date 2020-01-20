@@ -116,7 +116,7 @@ sys_despatcher:
 ; Output: None
 sys_addRoutine:
 	call __sys_addRoutine
-	retf
+retf
 
 ; This function installs a routine in the Despatcher Data Area.
 ; Input: AX  - Interrupt number (used to calculate offet in the Data Area)

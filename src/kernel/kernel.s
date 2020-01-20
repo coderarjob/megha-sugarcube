@@ -31,24 +31,29 @@ __init:
 		mov dx, sys_k_takeover
 		int 0x40
 
-		; ------ [ IO Module ] ---------
+		; --------[ IO ] ------------
+
+		; 												K_IO_ADD_MESSAGE
 		mov bx, DS_ADD_ROUTINE
 		mov	ax, K_IO_ADD_MESSAGE
 		mov cx, cs
 		mov dx, sys_io_add_message
 		int 0x40
 
+		; 												K_IO_GET_MESSAGE
 		mov bx, DS_ADD_ROUTINE
 		mov ax, K_IO_GET_MESSAGE
 		mov cx, cs
 		mov dx, sys_io_get_message
 		int 0x40
 
+		; 												K_IO_ADD_NOTIFICATION
 		mov bx, DS_ADD_ROUTINE
 		mov ax, K_IO_ADD_NOTIFICATION
 		mov cx, cs
 		mov dx, sys_io_add_notification
 		int 0x40
+
 		; --------[ IRQ 0 ] ----------
 		xor ax, ax
 		mov es, ax
@@ -62,11 +67,41 @@ retf
 
 sys_k_takeover:
 
-
 	; As this is a system call, IF (Interrupt)
 	; is disabled. We need to enable it.
 	sti
 
+	xchg bx, bx
+	mov ax, 100
+	call __k_alloc
+
+	push ax
+		xchg bx, bx
+		mov ax, 105
+		call __k_alloc
+
+		xchg bx, bx
+		call __k_free
+	pop ax
+
+	xchg bx, bx
+	call __k_free
+
+	xchg bx, bx
+	mov ax, 300
+	call __k_alloc
+
+	xchg bx, bx
+	call __k_free
+
+	xchg bx, bx
+	mov ax, 300
+	call __k_alloc
+
+	xchg bx, bx
+	call __k_free
+	xchg bx, bx
+	
 	; Infinite loop
 	jmp $
 
@@ -75,4 +110,5 @@ sys_k_takeover:
 
 %include "interrupt.s"
 %include "io.s"
+%include "mem.s"
 %include "../common/queue.s"

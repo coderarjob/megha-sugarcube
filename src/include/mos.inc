@@ -47,11 +47,11 @@
 	; MOS Fixed Memory Locations
 	%include "../include/mem.inc"
 
-	; Kernel Structures and constants.
-	%include "../include/kernel.inc"
-
 	; Maximan and Minimum limits
 	%include "../include/limits.inc"
+
+	; Kernel Structures and constants.
+	%include "../include/kernel.inc"
 
 	; MOS Data Area Structures and Constants
 	%include "../include/mda.inc"

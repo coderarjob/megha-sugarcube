@@ -33,9 +33,10 @@ io_init:
 
 		; Test
 		;mov ax, MSG_KB_DOWN
-		;mov cx, cs
-		;mov dx, __goo
-		;call sys_io_add_notification
+		;mov cx, NOTI_TYPE_SYSTEM 
+		;mov dx, cs
+		;mov si, __goo
+		;call __io_add_notification
 
 		;mov ax, MSG_KB_UP
 		;mov cx, cs
@@ -51,6 +52,7 @@ __foo:
 	retf
 
 __goo:
+	xchg bx, bx
 	retf
 
 ; Returns the top most message from the System Queue.
@@ -106,13 +108,37 @@ sys_io_add_message:
 	retf
 .queue_item: resb K_MSG_Q_ITEM_size
 
-; Adds a Notification Item
+; Adds a Application Notification Item. This is a wrapper that allows
+; application softwares to add notification only of type NOTI_TYPE_APP.
 ; Input:
 ;	AX		- MSG
-;	CX:DX	- Routine address
+;	CX		- Process ID
+;   DX		- Routine Offset
 ; Output:
 ;	AX		- 0 is success, 1 notification list full
 sys_io_add_notification:
+	push si
+	push dx
+	push cx
+		mov si, dx
+		mov dx, cx
+		mov cx, NOTI_TYPE_APP
+		call __io_add_notification
+	pop cx
+	pop dx
+	pop si
+retf
+
+; Adds a Complete Notification Item. A system call wrapper will allow
+; application softwares to add notification only of type NOTI_TYPE_APP.
+; Input:
+;	AX		- MSG
+;	CX		- Type ( 0 - NOTI_TYPE_APP, 1 - NOTI_TYPE_SYSTEM)
+;	DX		- Segment/PID 
+;   SI		- Offset
+; Output:
+;	AX		- 0 is success, 1 notification list full
+__io_add_notification:
 	push bx
 	push cx
 	push di
@@ -146,8 +172,9 @@ sys_io_add_notification:
 .found:
 		; We have found an empty location. Location in ES:DI
 		mov [es:di + K_NOTIFICATION_ITEM.Message], ax
-		mov [es:di + K_NOTIFICATION_ITEM.Routine.Segment], bx
-		mov [es:di + K_NOTIFICATION_ITEM.Routine.Offset], dx
+		mov [es:di + K_NOTIFICATION_ITEM.Type], bx
+		mov [es:di + K_NOTIFICATION_ITEM.Routine.Segment], dx
+		mov [es:di + K_NOTIFICATION_ITEM.Routine.Offset], si
 .success:
 		xor ax, ax
 		jmp .end
@@ -158,4 +185,4 @@ sys_io_add_notification:
 	pop di
 	pop cx
 	pop bx
-retf
+ret

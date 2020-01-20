@@ -47,9 +47,10 @@ _init:
 	push es
 		xor bx, bx
 		mov es, bx
-
-		mov [es:9*4],word kb_interrupt
-		mov [es:9*4+2],cs
+		cli
+			mov [es:9*4],word kb_interrupt
+			mov [es:9*4+2],cs
+		sti
 	pop es
 	pop bx
 	retf
@@ -353,8 +354,11 @@ kb_interrupt:
 		mov al, [key.leds]
 		out 0x60, al
 .end:
-		;TODO: Insert message into Main Messages Queue.
-		
+		; Adds the ScanCode, KeyCode and Flags in the System Message Queue.
+
+		; Message for Key Down and Key Up are Different.
+		; We determine that based on the PRESSED bit in the flags.
+
 		mov ax, MSG_KB_DOWN
 
 		test [key.flags], byte PRESSED
@@ -367,11 +371,6 @@ kb_interrupt:
 		mov dx, [key.keycode]		; LOW = KEYCODE
 		xor dh, dh
 		int 0x40
-
-		; We add to the queue here
-		;mov ax, cs
-		;mov bx, key
-		;call sys_term_keyboard_hook
 
 		; CLEAR EXTENDED Flag
 		; EXTENDED Flag is just an indication that the current keycode is part

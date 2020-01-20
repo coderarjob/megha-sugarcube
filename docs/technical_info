@@ -197,12 +197,11 @@ NOTE: Routines of System Software thus need be written in either Assembly or
 		struct notification_listitem{
 			u16	message,
 			u16 type,
-			u16 isRunning,
+			u16 .CodeOffset
 			union {
 				u16 .PID
 				u16 .CodeSegment
 			}
-			u16 .CodeOffset
 		};
 
 For an application program
@@ -222,12 +221,17 @@ process is there because of the below three reasons:
 	2. To be able to have DOS like Resident Programs
 	3. Future Multiprocessing capabilities.
 
+----------------------------------------------
+Context Swtiching in Single Process Megha OS:
+----------------------------------------------
+In the absence of Virtual Memory Context Switching would mean to have the
+segment registers setup properly and may be some OS variables.
+
 A single Process would mean that CPU is devoted completely to one application
 until it exits either volenterily or by the OS. There is one exception however,
 the IRQ0 ticks at 10KHz and thus every 100uS, the currently executing process
 will stop and control will pass to the IRQ routine. If there is a notification
 that need to be passed to some application then the below steps are taken:
-
 
 	1. Saves the Current Process by a similar system call proc_save(ip, flags);
 	   IP and Flags are taken from the Stack in IRQ0.
@@ -279,8 +283,6 @@ that need to be passed to some application then the below steps are taken:
 
 			b. The system call will do the following:
 					
-					enum what {GPR, FLAGS, IP};
-
 					proc_restore(pid){
 						
 						Current_Executing_Process = pid;
@@ -363,3 +365,18 @@ is SMALL mode.
 	   					  memory in their address space. OS will copy the 
 						  display buffer of the current process to VGA memory 
 						  when switching to the application. (for future)
+
+-----------------------------------------------------------------------------
+VIRTUAL TERMINAL
+-----------------------------------------------------------------------------
+
+	struct 
+	{
+		int Cursor_Location_X;	// Will this always be = bend??
+		int Cursor_Location_Y;	// Will this always be = bend??
+		int Cursor_Height;
+		int Text_Attribute;
+		int Text_Dirty_Start_Start, Text_Dirty_Start_End;
+		uint16 buffer[80 * 25 * 2];
+	} vttys[2] = {{0,0,15,80,0,0},
+				  {19,0,6,80,0,0}};
