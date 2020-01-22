@@ -1,19 +1,39 @@
 ; Megha Sugarcube Operating System - Memory Management Routines
 ;
+; Version: 21012020
+; --------------------------------------------------------------------------
 ; These routines will find the segment which is large enough to load a program
 ; /module or some bytes in case of application programs dynamic memory
 ; allocation. 
-; TODO: Dymanic Memory Allocation may be done in a libray and not be a 
-; system call at all.
 ;
-; In case of programs/modules, the routine will look in the Memory Already
-; allocated and find one or more blocks which are large enough or will return an
-; address after the last program/module.
+; TODO: Dymanic Memory Allocation will (may) be done in a libray and not be a 
+; system call at all. This way, the Programming Language can provide whatever
+; memory managemnt that suits their need. MALLOC() will have a similar
+; implementation, but can also be implemented differently in future. No need
+; for the OS to provide memory management to individual processes. The below
+; routines are souly for the kernel to use in Memory management for 
+; Process/Modules
+;
+; The routine will look in the Storage Already allocated and find one or more 
+; blocks which are large enough or will return an address after the last 
+; program/module.
 
+; --------------------------------------------------------------------------
+; Sets the Status to FREE for the storage block(s) starting with the block
+; whose Segment matches the input value in AX. These FREE blocks can later be
+; used by the __alloc routine when a block of at-most the SIZE of the freed
+; block(s) is requested.
+; NOTES: Does not collate adjacent FREE blocks into one. This results in
+;        waistage of storage as a FREE block of any size is alloted as long 
+;	     its size > one requested.
+; --------------------------------------------------------------------------
 ; Input:
 ; 	AX		- Segment
+; --------------------------------------------------------------------------
 ; Output:
-;	AX		- 0 Done, 1 Segment is not found
+;	AX		- 0 Done, 
+;			- 1 Segment is not found
+; --------------------------------------------------------------------------
 __k_free:
 	push bx
 	push cx
@@ -27,20 +47,22 @@ __k_free:
 		lea di, [MDA.k_list_process_memory]
 
 		; Find the segment
+		; Total number of items in Storage table is MAX_MODULES + MAX_PROCESS
 		mov cx, PROCESS_MAX_COUNT + KERNEL_MODULE_MAX_COUNT
-		jmp .match
 
 .again:
-			add di, K_MEMORY_ITEM_size
-.match:
 			cmp [es:di + K_MEMORY_ITEM.Segment], ax
-		loopne .again
+			je .found
+			add di, K_MEMORY_ITEM_size
+		loop .again
 
-		; If CX = 0, then the Segment is not found.
-		jcxz .notfound
-		
-		;xchg bx, bx
+		; Not found, as we have check all the items and jump to found never
+		; occured.
+		jmp .notfound
+
 		; Segment is found, DI holds the address in the Storage Table
+.found:
+		;xchg bx, bx
 		mov cx, [es:di + K_MEMORY_ITEM.BlockCount]
 		lea di, [di + K_MEMORY_ITEM.State]
 .loop:
@@ -53,8 +75,7 @@ __k_free:
 		jmp .end
 .notfound:
 		; Failed: Segment was not found in table
-		xor ax, ax
-		mov ax, 1
+		mov ax, ERR_FREE_SEGMENT_NOT_FOUND 	; ERR_FREE_SEGMENT_NOT_FOUND = 1
 .end:
 	pop es
 	pop di
@@ -62,11 +83,19 @@ __k_free:
 	pop bx
 ret
 
+; --------------------------------------------------------------------------
+; Allocates at-least the number of bytes specified in the input. When run for
+; the time, it returns a Segment = MODULE0_SEG and allots whatever size that 
+; was requested. If no consequetive FREE blocks are big enough, it will allot
+; new block at the first UNALLOCATED block with the size that was requested.
+; --------------------------------------------------------------------------
 ; Input:
 ; 	AX		- Size
+; --------------------------------------------------------------------------
 ; Output:
 ;	AX		- New Segment location
-;	AX		- 0 is failed
+;			- 0 if failed
+; --------------------------------------------------------------------------
 __k_alloc:
 	push bx
 	push cx
@@ -152,12 +181,16 @@ __k_alloc:
 			add cx, [es:si + K_MEMORY_ITEM.Segment]
 		pop si
 		
-		jmp .save_parameters
+		jmp .write_block_parameters
 
 .first_block_unallocated:
 		mov cx, MODULE0_SEG
 
-.save_parameters:
+.write_block_parameters:
+		; Check if Alloted Segment is within limits. (Out of Memory Check)
+		cmp cx, PROCESS_MAX_SEGMENT
+		jae .memory_full
+
 		; Save the parameters to the new block
 
 		mov [es:si + K_MEMORY_ITEM.Segment], cx
@@ -169,10 +202,6 @@ __k_alloc:
 		mov ax, cx
 		jmp .end
 
-.notfound:
-		;xchg bx, bx
-		xor ax, ax
-		jmp .end
 
 .used:
 		;xchg bx, bx
@@ -198,6 +227,11 @@ __k_alloc:
 		
 		jmp .state1
 
+.memory_full:
+.notfound:
+		;xchg bx, bx
+		mov ax, ERR_ALLOC_STORAGE_FULL	; ERR_ALLOC_STORAGE_FULL = 0
+		jmp .end
 .end:
 	;xchg bx, bx
 	pop es
@@ -209,3 +243,4 @@ ret
 .totalsize: dw 0
 .start_block: dw 0
 .nblocks  : dw 0
+; --------------------------------------------------------------------------
