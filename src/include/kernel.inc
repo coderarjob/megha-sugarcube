@@ -12,6 +12,8 @@
 	ERR_ALLOC_STORAGE_FULL:	EQU 0
 	ERR_FREE_SEGMENT_NOT_FOUND:	EQU 1
 
+	ERR_INVALID_PROCESS_ID:	EQU 1
+
 	NOTI_TYPE_APP   : EQU 0
 	NOTI_TYPE_SYSTEM: EQU 1
 
@@ -22,9 +24,9 @@
 	PROCESS_TYPE_APPLICATION	: EQU 0
 	PROCESS_TYPE_MODULE			: EQU 1
 
-	PROCESS_STATE_ACTIVE		: EQU 0
-	PROCESS_STATE_DORMANT		: EQU 1
-	PROCESS_STATE_KILLED		: EQU 2
+	PROCESS_STATE_KILLED		: EQU 0
+	PROCESS_STATE_ACTIVE		: EQU 1
+	PROCESS_STATE_DORMANT		: EQU 2
 
 	struc K_MEMORY_ITEM
 		.Segment	resw 1
@@ -61,24 +63,32 @@
 		.Segment	resw 1				; Segment where the process is loaded.
 		.Filename 	resb 12				; Holds the ASCIIZ file name
 		.ProcessID	resw 1				; Process ID
+		.StackEnd	resw 1
+		.ReservedMemoryStart EQU (.StackEnd + 1)
 
 		; General Purpose registers (32 bit registers are used as application 
 		; programs will be build in modern C compilers.
-		.EAX resw 2						
-		.EBX resw 2
-		.ECX resw 2
-		.EDX resw 2
-		.ESI resw 2
-		.EDI resw 2
-		.DS  resw 2
-		.ES  resw 2
-		.GS  resw 2
-		.FS  resw 2
-		.CS  resw 2
-		.IP  resw 2
+		.EAX 	resw 2						
+		.EBX 	resw 2
+		.ECX 	resw 2
+		.EDX 	resw 2
+		.ESI 	resw 2
+		.EDI 	resw 2
 		.EFLAGS resw 2					; 32 bit Flags register.
-		; Process can be in Active/Dormant/Killed modes.
-		.State resw 1					
+		.DS  	resw 1
+		.ES  	resw 1
+		.GS  	resw 1
+		.FS  	resw 1
+		.IP  	resw 1
+		.CS  	resw 1
+		.INVOKE_ADDRESS EQU .IP
+		.SS	 	resw 1
+		.SP	 	resw 1
+		.BP  	resw 1
+
+		.State resw 1					; Process can be in Active/Dormant/
+										; Killed (available for new process)
+										; mode.
 		.TTYID resw 1					; Which TTY is being used.
 	endstruc
 

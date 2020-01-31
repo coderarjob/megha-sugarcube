@@ -37,28 +37,28 @@ __init:
 		mov bx, DS_ADD_ROUTINE
 		mov	ax, K_IO_ADD_MESSAGE
 		mov cx, cs
-		mov dx, sys_io_add_message
-		int 0x40
+		;mov dx, sys_io_add_message
+		;int 0x40
 
 		; 												K_IO_GET_MESSAGE
 		mov bx, DS_ADD_ROUTINE
 		mov ax, K_IO_GET_MESSAGE
 		mov cx, cs
-		mov dx, sys_io_get_message
-		int 0x40
+		;mov dx, sys_io_get_message
+		;int 0x40
 
 		; 												K_IO_ADD_NOTIFICATION
 		mov bx, DS_ADD_ROUTINE
 		mov ax, K_IO_ADD_NOTIFICATION
 		mov cx, cs
-		mov dx, sys_io_add_notification
-		int 0x40
+		;mov dx, sys_io_add_notification
+		;int 0x40
 
 		; --------[ IRQ 0 ] ----------
 		xor ax, ax
 		mov es, ax
-		mov [es:8*4],word irq0
-		mov [es:8*4+2], cs
+		;mov [es:8*4],word irq0
+		;mov [es:8*4+2], cs
 
 	pop es
 	popa
@@ -71,44 +71,24 @@ sys_k_takeover:
 	; is disabled. We need to enable it.
 	sti
 
-	xchg bx, bx
-	mov ax, 100
-	call __k_alloc
-
-	push ax
-		xchg bx, bx
-		mov ax, 105
-		call __k_alloc
-
-		xchg bx, bx
-		call __k_free
-	pop ax
-
-	xchg bx, bx
-	call __k_free
-
-	xchg bx, bx
-	mov ax, 300
-	call __k_alloc
-
-	xchg bx, bx
-	call __k_free
-
-	xchg bx, bx
-	mov ax, 300
-	call __k_alloc
-
-	xchg bx, bx
-	call __k_free
-	xchg bx, bx
+	mov ax, cs
+	mov cx, .filename
+	mov dx, 0x1
+	call sys_k_process_create
 	
+	mov ax, 1
+	call sys_k_process_switch
+
 	; Infinite loop
 	jmp $
 
 	; IMP: MUST NEVER RETURN
-	ret
+ret
+.filename: db "LOADER     "
 
 %include "interrupt.s"
 %include "io.s"
 %include "mem.s"
+%include "process.s"
 %include "../common/queue.s"
+
