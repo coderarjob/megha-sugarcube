@@ -38,7 +38,7 @@
 	endstruc
 
 
-	%macro KM_SCREEN_CELL 1
+	%macro KM_SCREEN_CELL 1			; KM stands for Kernel macro
 		%1.row		resw 1
 		%1.collumn  resw 1
 	%endmacro
@@ -60,11 +60,14 @@
 	endstruc
 
 	struc K_PROCESS
-		.Segment	resw 1				; Segment where the process is loaded.
-		.Filename 	resb 12				; Holds the ASCIIZ file name
-		.ProcessID	resw 1				; Process ID
-		.StackEnd	resw 1
+		.Segment			resw 1		; Segment where the process is loaded.
+		.Filename 			resb 12		; Holds the ASCIIZ file name
+		.ProcessID			resw 1		; Process ID
+		.ParentProcessID	resw 1		; If 0, this is the first process.
+		.LastExitCode		resw 1
+		.StackEnd			resw 1
 		.ReservedMemoryStart EQU (.StackEnd + 1)
+		.TotalSize			 EQU .ReservedMemoryStart + PROCESS_MAX_UNALLOCATED_STORAGE
 
 		; General Purpose registers (32 bit registers are used as application 
 		; programs will be build in modern C compilers.
@@ -90,6 +93,22 @@
 										; Killed (available for new process)
 										; mode.
 		.TTYID resw 1					; Which TTY is being used.
+
+		; Private Message Queue of the Process.
+		; The System Message Queue is used up (dequeued) by the Timer Routine,
+		; so is useless for use by the Process. A separate Queue will keep
+		; things simple I think.
+		.Process_Q:
+		.Q_w_length 			RESW 1
+		;|-----|------------|------------|
+		;|  0  |     1      |     2      |
+		;|-----|------------|------------|
+		;| MSG | ARG WORD 0 | ARG WORD 1 |
+		;|-----|------------|------------|
+		.Q_w_width 				RESW 1
+		.Q_w_head	 			RESW 1
+		.Q_w_tail 				RESW 1
+		.Q_lst_buffer	 		RESB PROCESS_MSG_QUEUE_MAX_ITEMS * K_MSG_Q_ITEM_size
 	endstruc
 
 	struc K_NOTIFICATION_ITEM

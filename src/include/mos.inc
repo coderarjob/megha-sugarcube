@@ -33,8 +33,8 @@
 		.buffer:	resb 1 	
 	endstruc
 
-	struc FAR_POINTER
-		.Offset	resw 1
+	struc FAR_POINTER 
+		.Offset  resw 1
 		.Segment resw 1
 	endstruc
 
@@ -43,6 +43,8 @@
 		%1.Segment resw 1
 		%1 EQU %1.Offset
 	%endmacro
+
+	%define FAR_ADDRESS PROC
 
 	; MOS Fixed Memory Locations
 	%include "../include/mem.inc"
@@ -67,6 +69,8 @@
 	K_IO_GET_MESSAGE		EQU 11
 	K_TAKEOVER				EQU 12
 	K_IO_ADD_NOTIFICATION	EQU 13
+	K_PROCESS_CREATE		EQU 14
+	K_PROCESS_SWITCH		EQU 15
 
 	; Routines in 8254.mod (accessed via INT 0x40)
 	PIT_SET_COUNTER			EQU 20
@@ -79,6 +83,8 @@
 	VGA_SET_CURSOR_LOCATION		EQU 25
 	VGA_SET_CURSOR_ATTRIBUTES	EQU 26
 	VGA_SET_TEXT_ATTRIBUTES		EQU 27
+
+	; Routines in Kernel.mod	(accessed via INT 0x40)
 
 	; Routines in despatcher.mod (accessed via INT 0x40)
 	DS_ADD_ROUTINE			EQU 48

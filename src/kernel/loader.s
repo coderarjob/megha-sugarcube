@@ -132,7 +132,7 @@ _init:
 
 	; Prints version information and other statup messages.
 	printString msg_loader_welcome
-
+	
 	; Loads the start address of the list of files to load into 
 	;index registers.
 	mov si, fat_files

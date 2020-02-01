@@ -22,7 +22,8 @@ __init:
 	push es
 
 		; Initaize sub modules
-		call io_init
+		call __k_io_init
+		call __k_process_init
 
 		; ------ [ Kernel ] ---------
 		mov bx, DS_ADD_ROUTINE
@@ -30,29 +31,6 @@ __init:
 		mov cx, cs
 		mov dx, sys_k_takeover
 		int 0x40
-
-		; --------[ IO ] ------------
-
-		; 												K_IO_ADD_MESSAGE
-		mov bx, DS_ADD_ROUTINE
-		mov	ax, K_IO_ADD_MESSAGE
-		mov cx, cs
-		;mov dx, sys_io_add_message
-		;int 0x40
-
-		; 												K_IO_GET_MESSAGE
-		mov bx, DS_ADD_ROUTINE
-		mov ax, K_IO_GET_MESSAGE
-		mov cx, cs
-		;mov dx, sys_io_get_message
-		;int 0x40
-
-		; 												K_IO_ADD_NOTIFICATION
-		mov bx, DS_ADD_ROUTINE
-		mov ax, K_IO_ADD_NOTIFICATION
-		mov cx, cs
-		;mov dx, sys_io_add_notification
-		;int 0x40
 
 		; --------[ IRQ 0 ] ----------
 		xor ax, ax
@@ -74,17 +52,18 @@ sys_k_takeover:
 	mov ax, cs
 	mov cx, .filename
 	mov dx, 0x1
-	call sys_k_process_create
-	
+	call __k_process_create
+
+	xchg bx, bx
 	mov ax, 1
-	call sys_k_process_switch
+	call __k_process_switch
 
 	; Infinite loop
 	jmp $
 
 	; IMP: MUST NEVER RETURN
 ret
-.filename: db "LOADER     "
+.filename: db "DEMO    COM"
 
 %include "interrupt.s"
 %include "io.s"

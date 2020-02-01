@@ -13,23 +13,53 @@
 
 %include "../include/mos.inc"
 
-io_init:
+__k_io_init:
 	pusha
 	push es	
-		; Initialize Messages Queue
+		; -------------------------------------------------------------------
+		; Initialize Messages Queue 
+		; -------------------------------------------------------------------
 		mov bx, MDA_SEG
 		mov es, bx
-		mov [es:MDA.msg_w_length], word K_MSG_QUEUE_MAX_ITEMS
+		mov [es:MDA.msg_w_length], word K_SYSTEM_MSG_QUEUE_MAX_ITEMS
 		mov [es:MDA.msg_w_width], word K_MSG_Q_ITEM_size
 		mov [es:MDA.msg_w_head], word 0
 		mov [es:MDA.msg_w_tail], word 0
 
+		; -------------------------------------------------------------------
 		; Initialize Notification list.
 		; We initialize the memory array with MSG_NONE
+		; -------------------------------------------------------------------
 		mov di, MDA.k_list_notification
 		mov al, MSG_NONE
 		mov cx, K_NOTIFICATION_ITEM_size * K_MAX_NOTIFICATION_COUNT
 		rep stosb
+
+		; -------------------------------------------------------------------
+		; Install the System Calls
+		; -------------------------------------------------------------------
+
+		; 												K_IO_ADD_MESSAGE
+		mov bx, DS_ADD_ROUTINE
+		mov	ax, K_IO_ADD_MESSAGE
+		mov cx, cs
+		mov dx, sys_io_add_message
+		int 0x40
+
+		; 												K_IO_GET_MESSAGE
+		mov bx, DS_ADD_ROUTINE
+		mov ax, K_IO_GET_MESSAGE
+		mov cx, cs
+		mov dx, sys_io_get_message
+		int 0x40
+
+		; 												K_IO_ADD_NOTIFICATION
+		mov bx, DS_ADD_ROUTINE
+		mov ax, K_IO_ADD_NOTIFICATION
+		mov cx, cs
+		mov dx, sys_io_add_notification
+		int 0x40
+		; -------------------------------------------------------------------
 
 		; Test
 		;mov ax, MSG_KB_DOWN
@@ -44,16 +74,7 @@ io_init:
 		;call sys_io_add_notification
 	pop es
 	popa
-	ret
-
-__foo:
-	xchg bx, bx
-	xchg ax, ax
-	retf
-
-__goo:
-	xchg bx, bx
-	retf
+ret
 
 ; Returns the top most message from the System Queue.
 ; Input:
@@ -179,7 +200,7 @@ __io_add_notification:
 		xor ax, ax
 		jmp .end
 .full:
-		mov ax, ERR_NOTI_FULL
+		mov ax, ERR_NOTI_FULL 	; ERR_NOTI_FULL = 1
 .end:
 	pop es
 	pop di

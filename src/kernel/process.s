@@ -1,6 +1,6 @@
 ; Megha Sugarcube Operating System - Process Routines
 ; ----------------------------------------------------------------------------
-; Version: 22012020
+; Version: 01022020
 ; ----------------------------------------------------------------------------
 ; Routines here will be responsible for Creating, Switching and Closing process
 ; (user programs). Even tough Megha is a Single Process OS, it can keep upto 4
@@ -8,8 +8,93 @@
 ; one can be active at anytine.
 ; ----------------------------------------------------------------------------
 
+__k_process_init:
+	pusha
+	push es
+
+	mov bx, MDA_SEG
+	mov es, bx
+
+	; -----------------------------------------------------------------------
+	; Clear the Process Table Memory and the CurrentProcessID Memory in MDA
+	; -----------------------------------------------------------------------
+
+	mov [es:MDA.k_w_currentprocess], word 0
+
+	mov di, MDA.k_list_process
+	mov al, 0
+	mov cx, K_PROCESS_size * PROCESS_MAX_COUNT
+	rep stosb
+	
+	; -------------------------------------------------------------------
+	; Clear and Initialize the Process Queue
+	; -------------------------------------------------------------------
+	mov cx, PROCESS_MAX_COUNT
+
+	; Calculate the address of the Queue of Last entry in the Process Table.
+	mov di, cx
+	dec di
+	imul di, K_PROCESS_size
+	lea di, [di + MDA.k_list_process]
+.again:
+	mov [es:di + K_PROCESS.Q_w_length], word PROCESS_MSG_QUEUE_MAX_ITEMS
+	mov [es:di + K_PROCESS.Q_w_width], word K_MSG_Q_ITEM_size
+	mov [es:di + K_PROCESS.Q_w_head], word 0
+	mov [es:di + K_PROCESS.Q_w_tail], word 0
+	sub di, K_PROCESS_size		; Go to the previous one.
+	loop .again
+
+	xchg bx, bx
+
+	; -----------------------------------------------------------------------
+	; Add System Calls
+	; -----------------------------------------------------------------------
+	mov bx, DS_ADD_ROUTINE
+	mov ax, K_PROCESS_CREATE
+	mov cx, cs
+	mov dx, sys_k_process_create
+	int 0x40
+	; -----------------------------------------------------------------------
+	mov bx, DS_ADD_ROUTINE
+	mov ax, K_PROCESS_SWITCH
+	mov cx, cs
+	mov dx, sys_k_process_switch
+	int 0x40
+	; -----------------------------------------------------------------------
+
+	pop es
+	popa
+ret
+
 ; ----------------------------------------------------------------------------
-; Creates a process for the input executable file.
+; Exits the Current Process and switches to the parent process. 	     
+; If the Parent Process is Zero, then Exit fails and returns an error.
+; (System Call Wrapper)
+; ----------------------------------------------------------------------------
+; Input:
+;	AX		- Exit Code
+; Ouput:
+;	None	- Returns if fails, other wise does not return.
+__k_process_exit:
+
+ret
+
+; ----------------------------------------------------------------------------
+; Creates a process for the input executable file. 	     (System Call Wrapper)
+; ----------------------------------------------------------------------------
+; Input:
+; 	AX:CX	- ASCIIZ File name
+;	DX		- TTY ID
+; Output:
+;	AX		- PID (Starts from 1)
+;			- 0 is failed
+; ----------------------------------------------------------------------------
+sys_k_process_create:
+	call __k_process_create
+retf
+
+; ----------------------------------------------------------------------------
+; Creates a process for the input executable file.			   (Local Routine)
 ; ----------------------------------------------------------------------------
 ; Input:
 ; 	AX:CX	- ASCIIZ File name
@@ -26,7 +111,7 @@ struc CREATE_PROCESS_LVARS
 	.ProgramSize resw 1		;10 - bp+10 to bp+11
 endstruc
 ; ----------------------------------------------------------------------------
-sys_k_process_create:
+__k_process_create:
 
 	push bp
 	sub sp, CREATE_PROCESS_LVARS_size		; Allocate space on Stack
@@ -135,10 +220,11 @@ sys_k_process_create:
 	; ------------------------------------------------------------------------
 	; A. PROCESS ID, STATE AND TTY ID
 	; ------------------------------------------------------------------------
-	; Process ID = (CX - PROCESS_MAX_COUNT) + 1   ProcessID starts from 1
+	; Process ID = (PROCESS_MAX_COUNT - CX) + 1   ProcessID starts from 1
 	; ------------------------------------------------------------------------
-	sub cx, PROCESS_MAX_COUNT
-	inc cx
+	sub cx, PROCESS_MAX_COUNT		; Does CX - PROCESS_MAX_COUNT
+	neg cx							; Does - (CX - PROCESS_MAX_COUNT)
+	inc cx							; PROCESS_MAX_COUNT - CX + 1
 
 	mov [es:di + K_PROCESS.ProcessID], cx						; PROCESS ID
 	mov [es:di + K_PROCESS.State],word PROCESS_STATE_DORMANT	; STATE
@@ -216,6 +302,7 @@ sys_k_process_create:
 	call __k_free	
 .failed:
 	; Failed to create process. AX = 0 
+	xchg bx, bx
 	xor ax, ax
 	; ------------------------------------------------------------------------
 .end:
@@ -234,6 +321,15 @@ ret
 
 ; ----------------------------------------------------------------------------
 ; Jumps to the CS:IP of the process mentioned in the input.
+; (System Call Wrapper)
+; ----------------------------------------------------------------------------
+sys_k_process_switch:
+	call __k_process_switch
+retf
+
+; ----------------------------------------------------------------------------
+; Jumps to the CS:IP of the process mentioned in the input.
+;
 ; This routine also preserves the state of the Current Process before
 ; switching. If the Current Process = 0, then we do not save the status of the
 ; current process. Current Process = 0 means that the control still lies with
@@ -259,9 +355,10 @@ ret
 ;	AX		- 0 Success
 ;			- 1 Process not found.
 ; ----------------------------------------------------------------------------
-sys_k_process_switch:
+__k_process_switch:
 	push es
 	push si
+	push di
 	push bx
 
 	mov bx, MDA_SEG
@@ -270,26 +367,34 @@ sys_k_process_switch:
 	; ------------------------------------------------------------------------
 	; Validation of the Input
 	; ------------------------------------------------------------------------
-	; TODO: Check if CurrentProcessID == Input AX. If so we exit.
-	; Process ID starts from 1, we decrement it so that we can use it as an
-	; index into the Process Table.
-	dec ax
+	; Check if CurrentProcessID == Input AX. If so we exit.
+	cmp word [es:MDA.k_w_currentprocess], ax
+	je .failed_invalid_processid
 
-	; Check if input is a valid Process ID
+	; Check if input is a valid Process ID 
+	; Process ID starts from 1 and goes to PROCESS_MAX_COUNT
+	cmp ax, 0
+	je .failed_invalid_processid
+
 	cmp ax, PROCESS_MAX_COUNT
-	jae .failed_invalid_processid
+	ja .failed_invalid_processid
 
+	; ------------------------------------------------------------------------
 	; Process ID is valid
+	; ------------------------------------------------------------------------
 
 	; ------------------------------------------------------------------------
 	; Save the Current Process State in the Entry for the CurrentProcessID
 	; If CurrentProcessID == 0, we skip Saving the Current Process.
 	; ------------------------------------------------------------------------
 	cmp word [es:MDA.k_w_currentprocess], 0
-	je .process_saved
+	je .process_restore_and_jump		; Skip Saving the Current Process
 
 	;Get the Address of the entry in Process Table for the Current Process.
+	;xchg bx, bx
 	mov di, [es:MDA.k_w_currentprocess]
+	dec di						; Process ID Starts from 1, 
+								; Index into Process Table = ProcessID - 1
 	imul di, K_PROCESS_size
 	lea di, [di + MDA.k_list_process]
 
@@ -304,6 +409,9 @@ sys_k_process_switch:
 	; ------------------------------------------------------------------------
 .process_restore_and_jump:
 	; Get the Address of the entry in Process Table for the Input Process
+	;xchg bx, bx
+	dec ax						; Process ID Starts from 1, 
+								; Index into Process Table = ProcessID - 1
 	mov si, ax					; AX cannot be used in Effective addressing.
 	imul si, K_PROCESS_size
 	lea si, [si + MDA.k_list_process]
@@ -318,8 +426,13 @@ sys_k_process_switch:
 	mov ax, ERR_INVALID_PROCESS_ID
 	jmp .end
 .end:
+	pop bx
+	pop di
+	pop si
+	pop es
 ret
 
+;-------------------------------------------------------------------------
 __k_process_save:
 	;-------------------------------------------------------------------------
 	; Save 32 bit General Purpose registers
@@ -356,17 +469,31 @@ __k_process_save:
 	mov [es:di + K_PROCESS.SP], sp
 	mov [es:di + K_PROCESS.BP], bp
 
-jmp sys_k_process_switch.process_saved
+	;-------------------------------------------------------------------------
+	; Save 16 bit Code Segment and Pointer Registers
+	; Note: Stack Segment and Stack Pointer and Base Pointer registers are
+	; saved outside this routine in a macro.
+	;-------------------------------------------------------------------------
+	mov [es:di + K_PROCESS.CS], cs
+	mov [es:di + K_PROCESS.IP], word __k_process_switch.process_restore_point
 
+	;-------------------------------------------------------------------------
+	; Mark the Current Process as Dormant 
+	;-------------------------------------------------------------------------
+	mov [es:di + K_PROCESS.State], word PROCESS_STATE_DORMANT
+
+jmp __k_process_switch.process_saved
+;-------------------------------------------------------------------------
+
+;-------------------------------------------------------------------------
 __k_process_restore:
 	;-------------------------------------------------------------------------
-	; Restore 32 bit General Purpose registers
+	; Restore 32 bit General Purpose registers (Except ESI)
 	;-------------------------------------------------------------------------
 	mov eax ,[es:si + K_PROCESS.EAX] 
 	mov ebx ,[es:si + K_PROCESS.EBX] 
 	mov ecx ,[es:si + K_PROCESS.ECX] 
 	mov edx ,[es:si + K_PROCESS.EDX] 
-	mov esi ,[es:si + K_PROCESS.ESI] 
 	mov edi ,[es:si + K_PROCESS.EDI] 
 
 	;-------------------------------------------------------------------------
@@ -376,10 +503,9 @@ __k_process_restore:
 	popfd
 
 	;-------------------------------------------------------------------------
-	; Restore 16 bit Segment Registers
+	; Restore 16 bit Segment Registers (Except ES)
 	;-------------------------------------------------------------------------
 	mov ds, [es:si + K_PROCESS.DS]
-	mov es, [es:si + K_PROCESS.ES]
 	mov gs, [es:si + K_PROCESS.GS]
 	mov fs, [es:si + K_PROCESS.FS]
 	mov ss, [es:si + K_PROCESS.SS]
@@ -387,8 +513,40 @@ __k_process_restore:
 	;-------------------------------------------------------------------------
 	; Restore 16 bit Stack Pointer and Base Pointer Registers
 	;-------------------------------------------------------------------------
-	mov bp, [es:di + K_PROCESS.BP]
-	mov sp, [es:di + K_PROCESS.SP]
+	mov bp, [es:si + K_PROCESS.BP]
+	mov sp, [es:si + K_PROCESS.SP]
 
-jmp sys_k_process_switch.process_restored
+	;-------------------------------------------------------------------------
+	; Mark the Current Process as Active set the k_w_currentprocess.
+	;-------------------------------------------------------------------------
+	mov [es:si + K_PROCESS.State],word PROCESS_STATE_ACTIVE
 
+	; Set the Current ProcessID variable in MDA
+	push ax
+		mov ax, [es:si + K_PROCESS.ProcessID]
+		mov [es:MDA.k_w_currentprocess], ax
+	pop ax
+	
+	;-------------------------------------------------------------------------
+	; We store the Return address in a local memory before we restore
+	; ESI and ES.
+	;-------------------------------------------------------------------------
+
+	push eax
+		mov eax, [es:si + K_PROCESS.INVOKE_ADDRESS]
+		mov [cs:.jump_loc], eax
+	pop eax
+
+	;-------------------------------------------------------------------------
+	; Restore the ESI, ES registers and jump to the 
+	; CS:IP thus restoring them.
+	;-------------------------------------------------------------------------
+	push word [es:si + K_PROCESS.ES]
+		mov esi ,[es:si + K_PROCESS.ESI] 
+	pop es
+
+	xchg bx, bx
+	jmp far [cs:.jump_loc]
+;-------------------------------------------------------------------------
+.jump_loc: resw 2
+;-------------------------------------------------------------------------

@@ -188,8 +188,30 @@ __k_alloc:
 
 .write_block_parameters:
 		; Check if Alloted Segment is within limits. (Out of Memory Check)
-		cmp cx, PROCESS_MAX_SEGMENT
+		; This check is only required when allocating new memory, reusing FREE
+		; blocks do not require this check.
+		; ------------------------------------------------------------------
+		; Calculate if the SEGMENT * 16 + SIZE is < PROCESS_MEMORY_MAX
+		push cx
+			
+			push cx
+			xor ecx, ecx
+			pop cx
+
+			push ax
+			xor eax, eax
+			pop ax
+
+			shl ecx, 4		; SEGMENT * 16
+			add ecx, eax	; SEGMENT * 16 + SIZE
+			cmp ecx, PROCESS_MEMORY_MAX
+			;xchg bx, bx
+		pop cx
+
+		; If allocating memory for the requested Size exceepds the upper bound
+		; of the allowed memory range. We Exit with a MEMORY_FULL error.
 		jae .memory_full
+		; ------------------------------------------------------------------
 
 		; Save the parameters to the new block
 

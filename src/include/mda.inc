@@ -30,7 +30,7 @@
 			.msg_w_width  			RESW 1
 			.msg_w_head 			RESW 1
 			.msg_w_tail 			RESW 1
-			.msg_lst_buffer 		RESB K_MSG_QUEUE_MAX_ITEMS * K_MSG_Q_ITEM_size
+			.msg_lst_buffer 		RESB K_SYSTEM_MSG_QUEUE_MAX_ITEMS * K_MSG_Q_ITEM_size
 
 		; ---------------------[ Messsage Notification List ] -----------------
 		.k_list_notification:		RESB K_NOTIFICATION_ITEM_size * K_MAX_NOTIFICATION_COUNT
@@ -39,10 +39,18 @@
 		.k_list_vttys:				RESB K_VIRTUAL_TTY_size * VTTY_COUNT
 
 		; ---------------------[ Processes Memory ] -----------------
+		; List of all the memory that was allocated to the Kernel Modules and 
+		; user processes by the OS. These are the area in RAM where the
+		; executable files are loaded.
 		.k_list_process_memory:		RESB (PROCESS_MAX_COUNT + KERNEL_MODULE_MAX_COUNT) * K_MEMORY_ITEM_size
 
 		; ---------------------[ Processes ] -----------------
+		; Actual process table.
 		.k_list_process:			RESB K_PROCESS_size * PROCESS_MAX_COUNT
+
+		; Current Process ID (Zero means that the control still lies with the
+		; OS and CLI has not yet been started.
+		.k_w_currentprocess:		RESW 1			
 
 		; ---------------------[ Text Mode VGA Driver ] -----------------
 		.vga_w_mem_now:				resw 1
