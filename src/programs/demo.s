@@ -25,6 +25,6 @@
 
 	; No exit for now
 
-.filename: db "DEMO    COM"
+.filename: db "DEMO2   COM"
 
 %include "../include/mos.inc"

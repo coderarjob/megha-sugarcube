@@ -61,6 +61,12 @@ __k_process_init:
 	mov dx, sys_k_process_switch
 	int 0x40
 	; -----------------------------------------------------------------------
+	mov bx, DS_ADD_ROUTINE
+	mov ax, K_PROCESS_EXIT
+	mov cx, cs
+	mov dx, sys_k_process_exit
+	int 0x40
+	; -----------------------------------------------------------------------
 
 	pop es
 	popa
@@ -69,15 +75,81 @@ ret
 ; ----------------------------------------------------------------------------
 ; Exits the Current Process and switches to the parent process. 	     
 ; If the Parent Process is Zero, then Exit fails and returns an error.
+; TODO: Handle Parent process exiting before child process.
 ; (System Call Wrapper)
 ; ----------------------------------------------------------------------------
 ; Input:
 ;	AX		- Exit Code
 ; Ouput:
-;	None	- Returns if fails, other wise does not return.
-__k_process_exit:
+;	None	- Returns if fails, otherwise does not return.
+sys_k_process_exit:
+	push es
+	push bx
+	push di
 
-ret
+	; Make ES = MDA Segment
+	mov bx, MDA_SEG
+	mov es, bx
+
+	; Check if the Parent Process ID is not Zero.
+	mov bx, [es:MDA.k_w_currentprocess]
+	cmp bx, word 0
+	je .failed_parent_zero
+
+	; Parent Process ID is not zero
+
+	; Get the Current Process ID and 
+	; (a) Deallocate the Storage
+	; (b) Deallocate the Process Table Entry for the Process
+
+	; ----------------------------------------------------
+	; Get the Current Process ID and 
+	; ----------------------------------------------------
+	; Process ID starts from 1, so inorder to use it as index into the process
+	; table, we decrement it by 1
+	dec bx		
+	imul bx, K_PROCESS_size
+	lea di, [bx + MDA.k_list_process]
+
+	; ----------------------------------------------------
+	; (a) Deallocate the Storage
+	; ----------------------------------------------------
+	mov ax, [es:di + K_PROCESS.Segment]
+	call __k_free
+
+	cmp ax, 0
+	jne .failed_storeage_deallocation
+
+	; ----------------------------------------------------
+	; (b) Deallocate the Process Table Entry for the Process
+	; ----------------------------------------------------
+	mov [es:di + K_PROCESS.State],word PROCESS_STATE_KILLED
+
+	; ----------------------------------------------------
+	; Switch to the Parent Process ID
+	; ----------------------------------------------------
+	
+	; TODO: A way to return the exit code to the switch restore point.
+	; TODO: Do the below part properly.
+
+	; Set the Current Process ID to zero. The result will be that the
+	; sys_switch call will not save the current state, it will just restore and
+	; not save the current process.
+	mov [es:MDA.k_w_currentprocess], word 0
+
+	mov ax, [es:di + K_PROCESS.ParentProcessID]
+	call __k_process_switch
+
+
+.failed_parent_zero:
+	mov ax, K_ERR_PROCESS_PARENT_ZERO
+	call __k_setlasterror
+.failed_storeage_deallocation:
+.end:
+	pop di
+	pop bx
+	pop es
+retf
 
 ; ----------------------------------------------------------------------------
 ; Creates a process for the input executable file. 	     (System Call Wrapper)
@@ -218,7 +290,7 @@ __k_process_create:
 	; ------------------------------------------------------------------------
 .found:
 	; ------------------------------------------------------------------------
-	; A. PROCESS ID, STATE AND TTY ID
+	; A. PROCESS ID, STATE AND TTY ID, PARENT PROCESS ID, LastExitCode
 	; ------------------------------------------------------------------------
 	; Process ID = (PROCESS_MAX_COUNT - CX) + 1   ProcessID starts from 1
 	; ------------------------------------------------------------------------
@@ -231,6 +303,15 @@ __k_process_create:
 
 	mov ax, [bp + CREATE_PROCESS_LVARS.TTYID]
 	mov [es:di + K_PROCESS.TTYID],ax							; TTY ID
+
+	mov ax, [es:MDA.k_w_currentprocess]					; Parent Process ID
+	mov [es:di + K_PROCESS.ParentProcessID], ax				
+
+	; We reset the LastExitCode because it could have residue from previous
+	; allocations in the Process Table Entry. Is this important, becuase when
+	; any process exits via sys_exit call, it will always set the Exit Code
+	; anyways.
+	mov [es:di + K_PROCESS.LastExitCode], word 0
 
 	; ------------------------------------------------------------------------
 	; B. SEGMENT AND GENERAL PURPOSE REGISTERS
@@ -351,6 +432,7 @@ retf
 ; ----------------------------------------------------------------------------
 ; Input:
 ; 	AX		- Process ID (1st Process ID = 1, not Zero)
+; 	BX		- 0, Normal Switch, 1, Switch due to exit
 ; Output:
 ;	AX		- 0 Success
 ;			- 1 Process not found.

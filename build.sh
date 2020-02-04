@@ -36,6 +36,7 @@ popd
 pushd src/programs
 	echo "    [ Compiling User Program: Demo ]    "
 	nasm -f bin demo.s -g -o ../../build/programs/demo.com -l ../../lists/demo.lst || exit
+	nasm -f bin demo2.s -g -o ../../build/programs/demo2.com -l ../../lists/demo2.lst || exit
 popd
 
 # Build the floppy image
@@ -56,6 +57,7 @@ runas cp build/modules/despchr.mod temp/despchr.mod || exit
 runas cp build/modules/pit.mod temp/pit.mod || exit
 runas cp build/modules/kbd.mod temp/kbd.mod || exit
 runas cp build/programs/demo.com temp/demo.com || exit
+runas cp build/programs/demo2.com temp/demo2.com || exit
 #runas cp ~/asm/projects/megha/demo/keyboard/key.mod temp/key.mod || exit
 #runas cp ~/asm/projects/megha/demo/vga/vga.mod temp/vga.mod || exit
 

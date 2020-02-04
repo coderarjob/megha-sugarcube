@@ -59,6 +59,19 @@
 		.Filename 	resb 12			; Holds the ASCIIZ file name
 	endstruc
 
+	struc K_NOTIFICATION_ITEM
+		.Message resw 1
+		.Type    resw 1
+		PROC .Routine
+		.PID EQU .Routine.Segment
+	endstruc
+
+	struc K_MSG_Q_ITEM
+		.Message resw 1
+		.Arg0 resw 1
+		.Arg1 resw 1
+	endstruc
+
 	struc K_PROCESS
 		.Segment			resw 1		; Segment where the process is loaded.
 		.Filename 			resb 12		; Holds the ASCIIZ file name
@@ -111,17 +124,5 @@
 		.Q_lst_buffer	 		RESB PROCESS_MSG_QUEUE_MAX_ITEMS * K_MSG_Q_ITEM_size
 	endstruc
 
-	struc K_NOTIFICATION_ITEM
-		.Message resw 1
-		.Type    resw 1
-		PROC .Routine
-		.PID EQU .Routine.Segment
-	endstruc
-
-	struc K_MSG_Q_ITEM
-		.Message resw 1
-		.Arg0 resw 1
-		.Arg1 resw 1
-	endstruc
 
 %endif

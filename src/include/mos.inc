@@ -46,6 +46,9 @@
 
 	%define FAR_ADDRESS PROC
 
+	; Error Codes in the OS Kernel and Drivers/Modules.
+	%include "../include/errno.inc"
+
 	; MOS Fixed Memory Locations
 	%include "../include/mem.inc"
 
@@ -71,6 +74,7 @@
 	K_IO_ADD_NOTIFICATION	EQU 13
 	K_PROCESS_CREATE		EQU 14
 	K_PROCESS_SWITCH		EQU 15
+	K_PROCESS_EXIT			EQU 16
 
 	; Routines in 8254.mod (accessed via INT 0x40)
 	PIT_SET_COUNTER			EQU 20

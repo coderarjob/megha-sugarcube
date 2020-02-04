@@ -43,6 +43,45 @@ __init:
 
 retf
 
+; ---------------------------------------------------------------------------
+; Sets the last Kernel error from System calls or local routine calls.
+; (Local Routine)
+; ---------------------------------------------------------------------------
+; Input: 
+;	AX	- Error Code
+; Output:
+;	None
+; ---------------------------------------------------------------------------
+__k_setlasterror:
+	push es
+		
+		mov ax, MDA_SEG
+		mov es, ax
+
+		mov [es:MDA.k_w_lasterror], ax
+	pop es
+retf
+
+; ---------------------------------------------------------------------------
+; Gets the last Kernel error from System calls or local routine calls.
+; (System Call)
+; ---------------------------------------------------------------------------
+; Input: 
+;	None
+; Output:
+;	AX	- Error Code
+; ---------------------------------------------------------------------------
+sys_k_getlasterror:
+	push es
+		
+		mov ax, MDA_SEG
+		mov es, ax
+
+		mov ax, [es:MDA.k_w_lasterror]
+	pop es
+retf
+; ---------------------------------------------------------------------------
+
 sys_k_takeover:
 
 	; As this is a system call, IF (Interrupt)

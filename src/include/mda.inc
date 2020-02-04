@@ -52,6 +52,9 @@
 		; OS and CLI has not yet been started.
 		.k_w_currentprocess:		RESW 1			
 
+		; Last Kernel Error is stored here.
+		.k_w_lasterror:				RESW 1
+
 		; ---------------------[ Text Mode VGA Driver ] -----------------
 		.vga_w_mem_now:				resw 1
 		.vga_w_cur_now:				resw 1
