@@ -6,6 +6,16 @@
 ; (user programs). Even tough Megha is a Single Process OS, it can keep upto 4
 ; applications in memory (each can target one of the two virtual TTY), but only
 ; one can be active at anytine.
+; TODO: Handle Child Process when Exiting.
+; TODO:	When switching processes, we keep the registers in the Stack of the
+; 		process being saved. Remove the Register values from the K_PROCESS 
+;		structure. 
+; TODO: EAX is not saved by the process_switch, if needed it can  be saved by
+;		the process explicitly in the stack, before calling process_switch
+;		routine.
+; TODO: A way to return the Exit codes to the parent. We use EAX for that.
+; TODO: Alogn with the Exit Code, the high word of the EAX register will have
+;		the exit reason (Planned, Fault, Killed)
 ; ----------------------------------------------------------------------------
 
 __k_process_init:
@@ -75,11 +85,16 @@ ret
 ; ----------------------------------------------------------------------------
 ; Exits the Current Process and switches to the parent process. 	     
 ; If the Parent Process is Zero, then Exit fails and returns an error.
-; TODO: Handle Parent process exiting before child process.
+; TODO: All child processes will have the Parent ID = Parent ID of the Parent.
+;		There will always be the CLI process running. So no user process (child
+;		or otherwise) will never have Parent ID = 0.
+; TODO: A way to pass the exit code.
+; TODO: Exit Code DWORD sould have the Exit Reason in its High word.
 ; (System Call Wrapper)
 ; ----------------------------------------------------------------------------
 ; Input:
 ;	AX		- Exit Code
+; 	CX		- Exit Reason (Planned, Fault, Killed)
 ; Ouput:
 ;	None	- Returns if fails, otherwise does not return.
 sys_k_process_exit:
